@@ -15,6 +15,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AlertMessage } from "@/components/AlertMessage";
 import { apiClient } from "@/lib/apiClient";
+import { ContentCopilot } from "@/components/ContentCopilot";
 import {
   Save,
   Eye,
@@ -275,6 +276,15 @@ export default function ContentEditor() {
           </p>
         </div>
         <div className="flex gap-2">
+          <ContentCopilot
+            onContentGenerated={(generated) => {
+              if (content.type === "lesson" && generated.content) {
+                setContent({ ...content, content: generated.content });
+              } else if (content.type === "quiz" && generated.content) {
+                setContent({ ...content, description: generated.content });
+              }
+            }}
+          />
           <Button variant="outline" onClick={() => setPreviewMode(!previewMode)}>
             <Eye className="w-4 h-4 mr-2" />
             {previewMode ? "Edit" : "Preview"}

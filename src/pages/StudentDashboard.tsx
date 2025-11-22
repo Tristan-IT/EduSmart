@@ -7,7 +7,8 @@ import { LearningCard } from "@/components/LearningCard";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Calendar, Target, Flame, Play, Trophy, Sparkles, Award, BookOpen } from "lucide-react";
+import { Calendar, Target, Flame, Play, Trophy, Sparkles, Award, BookOpen, FileText } from "lucide-react";
+import { ParentSummaryModal } from "@/components/ParentSummaryModal";
 import { useNavigate } from "react-router-dom";
 import { XPBar } from "@/components/XPBar";
 import realApi from "@/lib/realApi";
@@ -63,6 +64,7 @@ const StudentDashboard = () => {
   const [aiRecommendations, setAiRecommendations] = useState<AiRecommendationResponse | null>(null);
   const [aiRecommendationError, setAiRecommendationError] = useState<string | null>(null);
   const [aiRewards, setAiRewards] = useState<AiRewardResponse | null>(null);
+  const [showParentSummary, setShowParentSummary] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -599,9 +601,25 @@ const StudentDashboard = () => {
                     <Trophy className="h-4 w-4 text-accent" />
                     Total XP <span className="font-bold text-accent">{profile?.xp ?? currentStudent.xp}</span>
                   </motion.div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowParentSummary(true)}
+                    className="w-full mt-3 gap-2"
+                  >
+                    <FileText className="h-4 w-4" />
+                    Ringkasan untuk Orang Tua
+                  </Button>
                 </CardContent>
               </Card>
             </motion.div>
+
+            <ParentSummaryModal
+              open={showParentSummary}
+              onOpenChange={setShowParentSummary}
+              studentId={user?.id || currentStudent.id}
+              studentName={user?.name || currentStudent.name}
+            />
 
             {/* League Progress */}
             <motion.div variants={fadeInRight}>

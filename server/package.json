@@ -10,13 +10,16 @@
     "seed": "tsx src/scripts/seed.ts",
     "seed:content": "tsx src/scripts/seedContentTemplates.ts",
     "migrate:subjects": "tsx src/scripts/migrateSubjects.ts",
+    "ai:mock": "tsx ai-mock-gateway.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "axios": "^1.6.0",
     "bcryptjs": "^2.4.3",
+    "nanoid": "^5.0.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",

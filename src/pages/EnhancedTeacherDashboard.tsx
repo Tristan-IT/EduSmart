@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { TeacherInsights } from "@/components/TeacherInsights";
 import {
   GraduationCap,
   Users,
@@ -181,6 +182,11 @@ const EnhancedTeacherDashboard = () => {
           <Alert variant="destructive">
             <AlertDescription>{error}</AlertDescription>
           </Alert>
+        )}
+
+        {/* AI Teacher Insights */}
+        {selectedClass !== "all" && (
+          <TeacherInsights classId={selectedClass} />
         )}
 
         {/* Analytics Cards */}

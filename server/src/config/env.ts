@@ -11,6 +11,9 @@ type EnvConfig = Record<RequiredKey, string> & {
   CLIENT_ORIGIN: string;
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
+  AI_GATEWAY_URL?: string;
+  AI_GATEWAY_KEY?: string;
+  AI_MODEL_NAME?: string;
 };
 
 const env: EnvConfig = {
@@ -21,6 +24,9 @@ const env: EnvConfig = {
   CLIENT_ORIGIN: process.env.CLIENT_ORIGIN ?? "http://localhost:5173",
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
   GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
+  AI_GATEWAY_URL: process.env.AI_GATEWAY_URL,
+  AI_GATEWAY_KEY: process.env.AI_GATEWAY_KEY,
+  AI_MODEL_NAME: process.env.AI_MODEL_NAME,
 };
 
 requiredEnv.forEach((key) => {

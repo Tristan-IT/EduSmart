@@ -11,6 +11,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, ArrowRight, CheckCircle, Timer, Trophy, Star, Zap, Clock, Target, Award, Brain, Heart } from "lucide-react";
+import { QuizFeedback } from "@/components/QuizFeedback";
 import { mockTopics, QuizQuestion } from "@/data/mockData";
 import { generateDailyQuiz, saveQuizToHistory } from "@/lib/quizGenerator";
 import { toast } from "sonner";
@@ -339,6 +340,17 @@ const QuizPlayer = () => {
                     <p className="text-sm text-muted-foreground">
                       Kamu perlu menjawab minimal {Math.ceil(questions.length / 2)} dari {questions.length} soal dengan benar. Coba lagi!
                     </p>
+                  </motion.div>
+                )}
+
+                {/* AI Quiz Feedback - Optional */}
+                {!isHeartRefill && currentQuestion && (
+                  <motion.div variants={fadeInUp} className="w-full max-w-2xl mx-auto">
+                    <QuizFeedback
+                      questionId={currentQuestion.id}
+                      correctAnswer={currentQuestion.correctAnswer}
+                      rubric={currentQuestion.explanation}
+                    />
                   </motion.div>
                 )}
 

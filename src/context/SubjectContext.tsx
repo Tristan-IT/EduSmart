@@ -43,12 +43,16 @@ export const SubjectProvider: React.FC<{ children: ReactNode }> = ({ children })
     try {
       setLoadingSubjects(true);
       const response = await subjectApi.getAll();
-      if (response.success) {
+      if (response.success && response.subjects && Array.isArray(response.subjects)) {
         setSubjects(response.subjects);
+      } else if (response.data && Array.isArray(response.data)) {
+        setSubjects(response.data);
+      } else {
+        setSubjects([]);
       }
     } catch (error) {
       console.error('Failed to load subjects:', error);
-      // Silently fail - subjects will remain empty
+      setSubjects([]);
     } finally {
       setLoadingSubjects(false);
     }
@@ -84,7 +88,7 @@ export const SubjectProvider: React.FC<{ children: ReactNode }> = ({ children })
   }, []);
 
   useEffect(() => {
-    if (subjects.length > 0 && user) {
+    if (subjects && subjects.length > 0 && user) {
       loadProgress();
     }
   }, [subjects, user]);

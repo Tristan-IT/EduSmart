@@ -27,6 +27,7 @@ import subjectRouter from "./routes/subjects.js";
 import progressRouter from "./routes/progress.js";
 import pathRouter from "./routes/paths.js";
 import lessonRouter from "./routes/lessons.js";
+import aiRouter from "./routes/ai.js";
 
 export const createApp = () => {
   const app = express();
@@ -111,6 +112,9 @@ export const createApp = () => {
   
   // Lesson content routes
   app.use("/api/lessons", lessonRouter);
+  
+  // AI integration routes (requires authentication)
+  app.use("/api/ai", aiRouter);
   
   // School dashboard routes (school_owner only)
   app.use("/api/school-dashboard", schoolDashboardRouter);

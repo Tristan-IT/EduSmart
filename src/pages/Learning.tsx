@@ -21,6 +21,7 @@ import { DailyGoals } from "@/components/DailyGoals";
 import { StreakTracker } from "@/components/StreakTracker";
 import { Hearts } from "@/components/Hearts";
 import { SubjectSelector } from "@/components/SubjectSelector";
+import { AiMentorChatLive } from "@/components/AiMentorChatLive";
 import { useSubject } from "@/context/SubjectContext";
 import { progressApi } from "@/lib/apiClient";
 import { useAuth } from "@/context/AuthContext";
@@ -278,7 +279,29 @@ const Learning = () => {
             {/* Mobile: Skill Tree First, then other cards */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 md:gap-6">
               
-              {/* MOBILE PRIORITY #1: Skill Tree (shows first on mobile) */}
+              {/* Left Column: Stats & AI Mentor */}
+              <div className="order-2 lg:order-1 col-span-1 lg:col-span-7 space-y-4 md:space-y-6">
+                {/* AI Mentor Chat Card */}
+                <motion.div
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ duration: 0.5, delay: 0.1 }}
+                >
+                  <AiMentorChatLive
+                    onSessionUpdate={(sessionId) => {
+                      console.log("AI Session ID:", sessionId);
+                    }}
+                  />
+                </motion.div>
+
+                {/* Stats Cards Row */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <DailyGoals />
+                  <StreakTracker />
+                </div>
+              </div>
+
+              {/* Right Column: Skill Tree */}
               <div className="order-1 lg:order-2 col-span-1 lg:col-span-5">
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
@@ -336,53 +359,13 @@ const Learning = () => {
                 </motion.div>
               </div>
 
-              {/* Left Sidebar - Progress & Resources (MOBILE: after skill tree) */}
-              <div className="order-2 lg:order-1 col-span-1 lg:col-span-4 space-y-3 md:space-y-4">
-                {/* Daily Goal Card */}
+              {/* Bottom Row: Additional Cards */}
+              <div className="order-3 col-span-1 lg:col-span-7 space-y-4">
+                {/* Hearts System */}
                 <motion.div
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ duration: 0.5 }}
-                  className="lg:block"
-                >
-                  <DailyGoals
-                    userId={currentStudent.id}
-                    currentXP={0}
-                    onClaim={(reward) => {
-                      toast.success(`Reward diklaim! +${reward.xp} XP, +${reward.gems} Gems`);
-                    }}
-                    onTargetChange={(newTarget) => {
-                      toast.info(`Target harian diubah menjadi ${newTarget} XP`);
-                    }}
-                  />
-                </motion.div>
-
-                {/* Streak Tracker - Full Detail */}
-                <motion.div
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ duration: 0.5, delay: 0.1 }}
-                  className="lg:block"
-                >
-                  <StreakTracker
-                    userId={currentStudent.id}
-                    currentGems={gems}
-                    onSpendGems={(amount, reason) => {
-                      setGems(prev => Math.max(0, prev - amount));
-                      toast.success(`${reason} aktif! -${amount} gems`);
-                    }}
-                    onStreakUpdate={(data) => {
-                      console.log("Streak updated:", data);
-                    }}
-                  />
-                </motion.div>
-
-                {/* Hearts System - Full Detail */}
-                <motion.div
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ duration: 0.5, delay: 0.2 }}
-                  className="lg:block"
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.5, delay: 0.3 }}
                 >
                   <Hearts
                     userId={currentStudent.id}
@@ -396,10 +379,6 @@ const Learning = () => {
                     }}
                   />
                 </motion.div>
-              </div>
-
-              {/* Center - Skill Tree */}
-              <div className="col-span-12 lg:col-span-6">
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
