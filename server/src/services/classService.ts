@@ -1,0 +1,672 @@
+import { Types } from "mongoose";
+import ClassModel, { IClass } from "../models/Class.js";
+import SchoolModel from "../models/School.js";
+import UserModel from "../models/User.js";
+import {
+  generateClassName,
+  validateClassData,
+  ClassCreationData,
+} from "../utils/classHelpers.js";
+
+/**
+ * Class Management Service
+ * Handles all class-related operations: creation, teacher assignment, student enrollment
+ */
+
+export interface CreateClassData {
+  schoolId: string;
+  grade: number;
+  section: string;
+  specialization?: string; // For SMA grade 11-12
+  majorCode?: string; // For SMK
+  majorName?: string; // For SMK
+  academicYear: string;
+  maxStudents?: number;
+  homeRoomTeacherId?: string;
+}
+
+export interface AssignTeacherData {
+  classId: string;
+  teacherId: string;
+  subjects?: string[];
+}
+
+/**
+ * Create a new class in a school
+ * Only school owner can create classes
+ */
+export const createClass = async (
+  schoolId: string,
+  classData: CreateClassData,
+  ownerId: string
+): Promise<IClass> => {
+  try {
+    // 1. Verify school exists and requester is the owner
+    const school = await SchoolModel.findOne({ schoolId });
+    if (!school) {
+      throw new Error("School not found");
+    }
+
+    if (school.owner.toString() !== ownerId) {
+      throw new Error("Unauthorized: Only school owner can create classes");
+    }
+
+    if (!school.isActive) {
+      throw new Error("School is not active");
+    }
+
+    // 2. Validate class data with helper function
+    const validationData: ClassCreationData = {
+      schoolType: school.schoolType,
+      grade: classData.grade,
+      section: classData.section,
+      specialization: classData.specialization,
+      majorCode: classData.majorCode,
+      majorName: classData.majorName,
+    };
+
+    const validation = validateClassData(validationData);
+    if (!validation.isValid) {
+      throw new Error(validation.errors.join(", "));
+    }
+
+    // 3. Generate class names using helper function
+    const { className, displayName, shortName } = generateClassName(validationData);
+
+    // 4. Check if class already exists (by displayName to prevent duplicates)
+    const existingClass = await ClassModel.findOne({
+      school: school._id,
+      displayName,
+      academicYear: classData.academicYear,
+    });
+
+    if (existingClass) {
+      throw new Error(`Kelas "${displayName}" sudah ada untuk tahun ajaran ${classData.academicYear}`);
+    }
+
+    // 5. If homeroom teacher provided, verify they exist and belong to this school
+    let homeRoomTeacher: Types.ObjectId | undefined;
+    let homeRoomTeacherName: string | undefined;
+    
+    if (classData.homeRoomTeacherId) {
+      const teacher = await UserModel.findOne({
+        _id: classData.homeRoomTeacherId,
+        role: "teacher",
+        school: school._id,
+      });
+
+      if (!teacher) {
+        throw new Error("Homeroom teacher not found or doesn't belong to this school");
+      }
+      homeRoomTeacher = teacher._id as Types.ObjectId;
+      homeRoomTeacherName = teacher.name;
+    }
+
+    // 6. Create the class with all required fields
+    const newClass = await ClassModel.create({
+      school: school._id,
+      schoolId: school.schoolId,
+      schoolName: school.schoolName,
+      schoolType: school.schoolType,
+      className,
+      displayName,
+      shortName,
+      grade: classData.grade,
+      section: classData.section,
+      specialization: classData.specialization?.toUpperCase(),
+      majorCode: classData.majorCode?.toUpperCase(),
+      majorName: classData.majorName,
+      academicYear: classData.academicYear,
+      maxStudents: classData.maxStudents || 40,
+      currentStudents: 0,
+      homeRoomTeacher,
+      homeRoomTeacherName,
+      subjectTeachers: [],
+      isActive: true,
+    });
+
+    // 7. Update school's total classes count
+    await SchoolModel.findByIdAndUpdate(school._id, {
+      $inc: { totalClasses: 1 },
+    });
+
+    // 8. If homeroom teacher assigned, add class to their teacherProfile
+    if (homeRoomTeacher) {
+      await UserModel.findByIdAndUpdate(homeRoomTeacher, {
+        $addToSet: { "teacherProfile.classes": newClass._id },
+      });
+    }
+
+    return newClass;
+  } catch (error: any) {
+    throw new Error(`Failed to create class: ${error.message}`);
+  }
+};
+
+/**
+ * Bulk create multiple classes
+ */
+export const bulkCreateClasses = async (
+  schoolId: string,
+  bulkData: {
+    grades: number[];
+    specialization?: string;
+    majorCode?: string;
+    majorName?: string;
+    sectionStart: number;
+    sectionEnd: number;
+    maxStudents: number;
+    academicYear: string;
+  },
+  ownerId: string
+): Promise<{ created: IClass[]; failed: Array<{ section: string; grade: number; error: string }> }> => {
+  const created: IClass[] = [];
+  const failed: Array<{ section: string; grade: number; error: string }> = [];
+
+  try {
+    // 1. Get school and verify ownership
+    const school = await SchoolModel.findById(schoolId);
+    if (!school) {
+      throw new Error("School not found");
+    }
+
+    if (school.owner.toString() !== ownerId) {
+      throw new Error("Unauthorized: Only school owner can create classes");
+    }
+
+    // 2. Generate all class combinations
+    const { grades, sectionStart, sectionEnd, specialization, majorCode, majorName, maxStudents, academicYear } = bulkData;
+
+    for (const grade of grades) {
+      for (let section = sectionStart; section <= sectionEnd; section++) {
+        try {
+          // Create class data for this combination
+          const classData: CreateClassData = {
+            schoolId,
+            grade,
+            section: section.toString(),
+            specialization,
+            majorCode,
+            majorName,
+            academicYear,
+            maxStudents,
+          };
+
+          // Use the existing createClass function
+          const newClass = await createClass(schoolId, classData, ownerId);
+          created.push(newClass);
+        } catch (error: any) {
+          // Log individual failures but continue
+          failed.push({
+            grade,
+            section: section.toString(),
+            error: error.message,
+          });
+        }
+      }
+    }
+
+    return { created, failed };
+  } catch (error: any) {
+    throw new Error(`Failed to bulk create classes: ${error.message}`);
+  }
+};
+
+/**
+ * Assign or update homeroom teacher for a class
+ */
+export const assignHomeRoomTeacher = async (
+  classId: string,
+  teacherId: string,
+  requesterId: string
+): Promise<IClass> => {
+  try {
+    // 1. Get the class with populated school
+    const classDoc = await ClassModel.findOne({ classId }).populate("school");
+    if (!classDoc) {
+      throw new Error("Class not found");
+    }
+
+    const school = classDoc.school as any;
+
+    // 2. Verify requester is school owner
+    if (school.owner.toString() !== requesterId) {
+      throw new Error("Unauthorized: Only school owner can assign teachers");
+    }
+
+    // 3. Verify teacher exists and belongs to this school
+    const teacher = await UserModel.findOne({
+      _id: teacherId,
+      role: "teacher",
+      school: school._id,
+    });
+
+    if (!teacher) {
+      throw new Error("Teacher not found or doesn't belong to this school");
+    }
+
+    // 4. Remove class from old homeroom teacher's profile (if exists)
+    if (classDoc.homeRoomTeacher) {
+      await UserModel.findByIdAndUpdate(classDoc.homeRoomTeacher, {
+        $pull: { "teacherProfile.classes": classDoc._id },
+      });
+    }
+
+    // 5. Update class with new homeroom teacher
+    classDoc.homeRoomTeacher = teacher._id as Types.ObjectId;
+    await classDoc.save();
+
+    // 6. Add class to new teacher's profile
+    await UserModel.findByIdAndUpdate(teacher._id, {
+      $addToSet: { "teacherProfile.classes": classDoc._id },
+    });
+
+    return classDoc;
+  } catch (error: any) {
+    throw new Error(`Failed to assign homeroom teacher: ${error.message}`);
+  }
+};
+
+/**
+ * Add a subject teacher to a class
+ */
+export const addSubjectTeacher = async (
+  classId: string,
+  teacherId: string,
+  subjects: string[],
+  requesterId: string
+): Promise<IClass> => {
+  try {
+    // 1. Get the class with populated school
+    const classDoc = await ClassModel.findOne({ classId }).populate("school");
+    if (!classDoc) {
+      throw new Error("Class not found");
+    }
+
+    const school = classDoc.school as any;
+
+    // 2. Verify requester is school owner
+    if (school.owner.toString() !== requesterId) {
+      throw new Error("Unauthorized: Only school owner can assign teachers");
+    }
+
+    // 3. Verify teacher exists and belongs to this school
+    const teacher = await UserModel.findOne({
+      _id: teacherId,
+      role: "teacher",
+      school: school._id,
+    });
+
+    if (!teacher) {
+      throw new Error("Teacher not found or doesn't belong to this school");
+    }
+
+    // 4. Add subject teachers (one entry per subject)
+    for (const subject of subjects) {
+      // Check if this teacher-subject combination already exists
+      const existing = classDoc.subjectTeachers.find(
+        (st) => st.teacher.toString() === teacherId && st.subject === subject
+      );
+
+      if (!existing) {
+        classDoc.subjectTeachers.push({
+          teacher: teacher._id as Types.ObjectId,
+          teacherName: teacher.name,
+          subject,
+        });
+      }
+    }
+
+    await classDoc.save();
+
+    // 5. Add class to teacher's profile (if not already there)
+    await UserModel.findByIdAndUpdate(teacher._id, {
+      $addToSet: { "teacherProfile.classes": classDoc._id },
+    });
+
+    return classDoc;
+  } catch (error: any) {
+    throw new Error(`Failed to add subject teacher: ${error.message}`);
+  }
+};
+
+/**
+ * Remove a subject teacher from a class
+ */
+export const removeSubjectTeacher = async (
+  classId: string,
+  teacherId: string,
+  requesterId: string
+): Promise<IClass> => {
+  try {
+    // 1. Get the class with populated school
+    const classDoc = await ClassModel.findOne({ classId }).populate("school");
+    if (!classDoc) {
+      throw new Error("Class not found");
+    }
+
+    const school = classDoc.school as any;
+
+    // 2. Verify requester is school owner
+    if (school.owner.toString() !== requesterId) {
+      throw new Error("Unauthorized: Only school owner can remove teachers");
+    }
+
+    // 3. Remove teacher from subjectTeachers array
+    classDoc.subjectTeachers = classDoc.subjectTeachers.filter(
+      (st) => st.teacher.toString() !== teacherId
+    );
+
+    await classDoc.save();
+
+    // 4. Check if teacher is still assigned to this class (as homeroom teacher)
+    const stillAssigned = classDoc.homeRoomTeacher?.toString() === teacherId;
+
+    // 5. If not assigned anymore, remove class from teacher's profile
+    if (!stillAssigned) {
+      await UserModel.findByIdAndUpdate(teacherId, {
+        $pull: { "teacherProfile.classes": classDoc._id },
+      });
+    }
+
+    return classDoc;
+  } catch (error: any) {
+    throw new Error(`Failed to remove subject teacher: ${error.message}`);
+  }
+};
+
+/**
+ * Get all students in a class
+ * Teachers can only view classes they're assigned to
+ */
+export const getClassStudents = async (
+  classId: string,
+  requesterId: string,
+  requesterRole: string
+): Promise<any[]> => {
+  try {
+    // 1. Get the class
+    const classDoc = await ClassModel.findOne({ classId }).populate("school");
+    if (!classDoc) {
+      throw new Error("Class not found");
+    }
+
+    const school = classDoc.school as any;
+
+    // 2. Authorization check
+    if (requesterRole === "school_owner") {
+      // Owner must own the school
+      if (school.owner.toString() !== requesterId) {
+        throw new Error("Unauthorized: You don't own this school");
+      }
+    } else if (requesterRole === "teacher") {
+      // Teacher must be assigned to this class
+      const isHomeRoom = classDoc.homeRoomTeacher?.toString() === requesterId;
+      const isSubjectTeacher = classDoc.subjectTeachers.some(
+        (st) => st.teacher.toString() === requesterId
+      );
+
+      if (!isHomeRoom && !isSubjectTeacher) {
+        throw new Error("Unauthorized: You are not assigned to this class");
+      }
+    } else {
+      throw new Error("Unauthorized: Only teachers and owners can view class students");
+    }
+
+    // 3. Get all students in this class
+    const students = await UserModel.find({
+      role: "student",
+      class: classDoc._id,
+    })
+      .select("name email studentId rollNumber avatar createdAt")
+      .sort({ rollNumber: 1 })
+      .lean();
+
+    return students;
+  } catch (error: any) {
+    throw new Error(`Failed to get class students: ${error.message}`);
+  }
+};
+
+/**
+ * Get class details with teachers and student count
+ */
+export const getClassDetails = async (
+  classId: string,
+  requesterId: string,
+  requesterRole: string
+): Promise<any> => {
+  try {
+    // 1. Get the class with populated fields
+    const classDoc = await ClassModel.findOne({ classId })
+      .populate("school", "schoolId schoolName city province")
+      .populate("homeRoomTeacher", "name email avatar teacherProfile.employeeId")
+      .populate("subjectTeachers.teacher", "name email avatar teacherProfile.subjects")
+      .lean();
+
+    if (!classDoc) {
+      throw new Error("Class not found");
+    }
+
+    const school = classDoc.school as any;
+
+    // 2. Authorization check
+    if (requesterRole === "school_owner") {
+      // Owner must own the school
+      if (school.owner.toString() !== requesterId) {
+        throw new Error("Unauthorized: You don't own this school");
+      }
+    } else if (requesterRole === "teacher") {
+      // Teacher must be assigned to this class
+      const isHomeRoom = classDoc.homeRoomTeacher?._id?.toString() === requesterId;
+      const isSubjectTeacher = classDoc.subjectTeachers.some(
+        (st: any) => st.teacher._id.toString() === requesterId
+      );
+
+      if (!isHomeRoom && !isSubjectTeacher) {
+        throw new Error("Unauthorized: You are not assigned to this class");
+      }
+    } else if (requesterRole === "student") {
+      // Students can only view their own class
+      const student = await UserModel.findById(requesterId);
+      if (!student || student.class?.toString() !== classDoc._id.toString()) {
+        throw new Error("Unauthorized: This is not your class");
+      }
+    } else {
+      throw new Error("Unauthorized");
+    }
+
+    return classDoc;
+  } catch (error: any) {
+    throw new Error(`Failed to get class details: ${error.message}`);
+  }
+};
+
+/**
+ * Get all classes in a school
+ * Only for school owner
+ */
+export const getSchoolClasses = async (
+  schoolId: string,
+  ownerId: string
+): Promise<IClass[]> => {
+  try {
+    // 1. Verify school exists and requester is owner
+    const school = await SchoolModel.findOne({ schoolId });
+    if (!school) {
+      throw new Error("School not found");
+    }
+
+    if (school.owner.toString() !== ownerId) {
+      throw new Error("Unauthorized: Only school owner can view all classes");
+    }
+
+    // 2. Get all classes in this school
+    const classes = await ClassModel.find({ school: school._id })
+      .populate("homeRoomTeacher", "name email avatar teacherProfile.employeeId")
+      .populate("subjectTeachers.teacher", "name email")
+      .populate("subjects", "code name category color icon")
+      .sort({ grade: 1, className: 1, section: 1 })
+      .lean();
+
+    return classes as any;
+  } catch (error: any) {
+    throw new Error(`Failed to get school classes: ${error.message}`);
+  }
+};
+
+/**
+ * Update class details
+ * Only school owner can update
+ * Note: schoolType and grade are immutable after creation
+ */
+export const updateClass = async (
+  classId: string,
+  updateData: Partial<CreateClassData>,
+  ownerId: string
+): Promise<IClass> => {
+  try {
+    // 1. Get the class with populated school
+    const classDoc = await ClassModel.findOne({ classId }).populate("school");
+    if (!classDoc) {
+      throw new Error("Class not found");
+    }
+
+    const school = classDoc.school as any;
+
+    // 2. Verify requester is school owner
+    if (school.owner.toString() !== ownerId) {
+      throw new Error("Unauthorized: Only school owner can update classes");
+    }
+
+    // 3. Validate updates
+    let needsRegeneration = false;
+
+    // Section can be updated
+    if (updateData.section !== undefined && updateData.section !== classDoc.section) {
+      classDoc.section = updateData.section;
+      needsRegeneration = true;
+    }
+
+    // Specialization can be updated (for SMA)
+    if (updateData.specialization !== undefined && updateData.specialization !== classDoc.specialization) {
+      if (school.schoolType === "SMA" && classDoc.grade >= 11) {
+        classDoc.specialization = updateData.specialization.toUpperCase();
+        needsRegeneration = true;
+      } else {
+        throw new Error("Specialization can only be set for SMA grade 11-12");
+      }
+    }
+
+    // Major can be updated (for SMK)
+    if (updateData.majorCode !== undefined || updateData.majorName !== undefined) {
+      if (school.schoolType === "SMK") {
+        if (updateData.majorCode) {
+          classDoc.majorCode = updateData.majorCode.toUpperCase();
+          needsRegeneration = true;
+        }
+        if (updateData.majorName) {
+          classDoc.majorName = updateData.majorName;
+        }
+      } else {
+        throw new Error("Major can only be set for SMK");
+      }
+    }
+
+    // Academic year can be updated
+    if (updateData.academicYear && updateData.academicYear !== classDoc.academicYear) {
+      classDoc.academicYear = updateData.academicYear;
+    }
+
+    // Max students can be updated
+    if (updateData.maxStudents && updateData.maxStudents !== classDoc.maxStudents) {
+      classDoc.maxStudents = updateData.maxStudents;
+    }
+
+    // 4. Regenerate class names if needed
+    if (needsRegeneration) {
+      const validationData: ClassCreationData = {
+        schoolType: classDoc.schoolType,
+        grade: classDoc.grade,
+        section: classDoc.section,
+        specialization: classDoc.specialization,
+        majorCode: classDoc.majorCode,
+        majorName: classDoc.majorName,
+      };
+
+      const validation = validateClassData(validationData);
+      if (!validation.isValid) {
+        throw new Error(validation.errors.join(", "));
+      }
+
+      const { className, displayName, shortName } = generateClassName(validationData);
+
+      // Check for duplicate displayName (excluding current class)
+      const duplicate = await ClassModel.findOne({
+        school: school._id,
+        displayName,
+        _id: { $ne: classDoc._id },
+        academicYear: classDoc.academicYear,
+      });
+
+      if (duplicate) {
+        throw new Error(`Kelas \"${displayName}\" sudah ada untuk tahun ajaran ${classDoc.academicYear}`);
+      }
+
+      classDoc.className = className;
+      classDoc.displayName = displayName;
+      classDoc.shortName = shortName;
+    }
+
+    // 5. Save changes
+    await classDoc.save();
+
+    return classDoc;
+  } catch (error: any) {
+    throw new Error(`Failed to update class: ${error.message}`);
+  }
+};
+
+/**
+ * Deactivate a class
+ * Only school owner can deactivate
+ */
+export const deactivateClass = async (
+  classId: string,
+  ownerId: string
+): Promise<IClass> => {
+  try {
+    // 1. Get the class with populated school
+    const classDoc = await ClassModel.findOne({ classId }).populate("school");
+    if (!classDoc) {
+      throw new Error("Class not found");
+    }
+
+    const school = classDoc.school as any;
+
+    // 2. Verify requester is school owner
+    if (school.owner.toString() !== ownerId) {
+      throw new Error("Unauthorized: Only school owner can deactivate classes");
+    }
+
+    // 3. Check if class has students
+    if (classDoc.currentStudents > 0) {
+      throw new Error(
+        "Cannot deactivate class with enrolled students. Please transfer students first."
+      );
+    }
+
+    // 4. Deactivate class
+    classDoc.isActive = false;
+    await classDoc.save();
+
+    // 5. Update school's total classes count
+    await SchoolModel.findByIdAndUpdate(school._id, {
+      $inc: { totalClasses: -1 },
+    });
+
+    return classDoc;
+  } catch (error: any) {
+    throw new Error(`Failed to deactivate class: ${error.message}`);
+  }
+};
