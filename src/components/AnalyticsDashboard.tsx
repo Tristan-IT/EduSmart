@@ -1,0 +1,598 @@
+import { useState } from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Progress } from '@/components/ui/progress';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Skeleton } from '@/components/ui/skeleton';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  usePathAnalytics,
+  useStudentPathProgress,
+  useSubjectComparison,
+  useTrendingPaths,
+} from '@/hooks/usePathAnalytics';
+import {
+  BarChart3,
+  Users,
+  Target,
+  TrendingUp,
+  TrendingDown,
+  Clock,
+  Award,
+  AlertTriangle,
+  CheckCircle,
+  Activity,
+  Flame,
+  Brain,
+  Zap
+} from 'lucide-react';
+
+export default function AnalyticsDashboard() {
+  const [gradeLevel, setGradeLevel] = useState('SD');
+  const [classNumber, setClassNumber] = useState(4);
+  const [semester, setSemester] = useState(1);
+  const [subject, setSubject] = useState('Matematika');
+
+  const { analytics, loading: loadingAnalytics, refresh } = usePathAnalytics(
+    gradeLevel,
+    classNumber,
+    semester,
+    subject
+  );
+
+  const { students, loading: loadingStudents } = useStudentPathProgress(
+    gradeLevel,
+    classNumber,
+    semester,
+    subject
+  );
+
+  const { comparison, loading: loadingComparison } = useSubjectComparison(
+    gradeLevel,
+    classNumber,
+    semester
+  );
+
+  const { trending, loading: loadingTrending } = useTrendingPaths(5);
+
+  const formatTime = (seconds: number) => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    if (hours > 0) return `${hours}j ${minutes}m`;
+    return `${minutes}m`;
+  };
+
+  return (
+    <div className="container mx-auto p-6 space-y-6">
+      {/* Header with Filters */}
+      <div className="flex flex-col md:flex-row justify-between items-start gap-4">
+        <div>
+          <h1 className="text-3xl font-bold mb-2">Analitik Jalur Pembelajaran</h1>
+          <p className="text-muted-foreground">
+            Pantau performa dan progres siswa secara real-time
+          </p>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <Select value={gradeLevel} onValueChange={setGradeLevel}>
+            <SelectTrigger className="w-[100px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="SD">SD</SelectItem>
+              <SelectItem value="SMP">SMP</SelectItem>
+              <SelectItem value="SMA">SMA</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select value={classNumber.toString()} onValueChange={(v) => setClassNumber(Number(v))}>
+            <SelectTrigger className="w-[100px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {[1, 2, 3, 4, 5, 6].map(n => (
+                <SelectItem key={n} value={n.toString()}>Kelas {n}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={semester.toString()} onValueChange={(v) => setSemester(Number(v))}>
+            <SelectTrigger className="w-[120px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="1">Semester 1</SelectItem>
+              <SelectItem value="2">Semester 2</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select value={subject} onValueChange={setSubject}>
+            <SelectTrigger className="w-[150px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="Matematika">Matematika</SelectItem>
+              <SelectItem value="Bahasa Indonesia">Bahasa Indonesia</SelectItem>
+              <SelectItem value="IPA">IPA</SelectItem>
+              <SelectItem value="IPS">IPS</SelectItem>
+              <SelectItem value="Bahasa Inggris">Bahasa Inggris</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Button variant="outline" onClick={refresh}>
+            <Activity className="w-4 h-4 mr-2" />
+            Refresh
+          </Button>
+        </div>
+      </div>
+
+      <Tabs defaultValue="overview" className="w-full">
+        <TabsList>
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="nodes">Node Analytics</TabsTrigger>
+          <TabsTrigger value="students">Student Progress</TabsTrigger>
+          <TabsTrigger value="comparison">Subject Comparison</TabsTrigger>
+        </TabsList>
+
+        {/* Overview Tab */}
+        <TabsContent value="overview" className="space-y-4">
+          {loadingAnalytics ? (
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-32" />)}
+            </div>
+          ) : analytics ? (
+            <>
+              {/* Key Metrics */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <MetricCard
+                  title="Total Siswa"
+                  value={analytics.totalStudents}
+                  icon={<Users className="w-5 h-5" />}
+                  subtitle={`${analytics.activeStudents} aktif`}
+                  trend={analytics.activeStudents > analytics.totalStudents / 2 ? 'up' : 'down'}
+                />
+                <MetricCard
+                  title="Tingkat Penyelesaian"
+                  value={`${analytics.completionRate.toFixed(1)}%`}
+                  icon={<Target className="w-5 h-5" />}
+                  subtitle={`${analytics.completedStudents} selesai`}
+                  color={analytics.completionRate >= 70 ? 'text-green-600' : 'text-orange-600'}
+                />
+                <MetricCard
+                  title="Rata-rata Skor"
+                  value={`${analytics.averageScore.toFixed(0)}%`}
+                  icon={<Award className="w-5 h-5" />}
+                  subtitle="Across all nodes"
+                  color={analytics.averageScore >= 75 ? 'text-green-600' : 'text-yellow-600'}
+                />
+                <MetricCard
+                  title="Tingkat Dropout"
+                  value={`${analytics.dropoutRate.toFixed(1)}%`}
+                  icon={<TrendingDown className="w-5 h-5" />}
+                  subtitle="Tidak aktif 14+ hari"
+                  color={analytics.dropoutRate > 30 ? 'text-red-600' : 'text-green-600'}
+                />
+              </div>
+
+              {/* Progress & Score Distribution */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Distribusi Progres</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <ProgressBar
+                      label="Sedang Berjalan"
+                      value={analytics.progressDistribution.percentages.inProgress}
+                      count={analytics.progressDistribution.inProgress}
+                      color="bg-blue-500"
+                    />
+                    <ProgressBar
+                      label="Selesai"
+                      value={analytics.progressDistribution.percentages.completed}
+                      count={analytics.progressDistribution.completed}
+                      color="bg-green-500"
+                    />
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Distribusi Skor</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <ProgressBar
+                      label="Excellent (90-100)"
+                      value={(analytics.scoreDistribution.excellent / analytics.totalStudents) * 100}
+                      count={analytics.scoreDistribution.excellent}
+                      color="bg-green-600"
+                    />
+                    <ProgressBar
+                      label="Good (80-89)"
+                      value={(analytics.scoreDistribution.good / analytics.totalStudents) * 100}
+                      count={analytics.scoreDistribution.good}
+                      color="bg-blue-500"
+                    />
+                    <ProgressBar
+                      label="Average (70-79)"
+                      value={(analytics.scoreDistribution.average / analytics.totalStudents) * 100}
+                      count={analytics.scoreDistribution.average}
+                      color="bg-yellow-500"
+                    />
+                    <ProgressBar
+                      label="Below Average (<70)"
+                      value={((analytics.scoreDistribution.belowAverage + analytics.scoreDistribution.poor) / analytics.totalStudents) * 100}
+                      count={analytics.scoreDistribution.belowAverage + analytics.scoreDistribution.poor}
+                      color="bg-red-500"
+                    />
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Dropout Points */}
+              {analytics.dropoutPoints.length > 0 && (
+                <Card className="border-orange-200">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <AlertTriangle className="w-5 h-5 text-orange-600" />
+                      Titik Dropout Tertinggi
+                    </CardTitle>
+                    <CardDescription>Node dimana siswa paling sering berhenti</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {analytics.dropoutPoints.map((point) => (
+                        <div key={point.nodeId} className="flex items-center justify-between p-3 border rounded-lg">
+                          <div>
+                            <div className="font-medium">{point.nodeName}</div>
+                            <div className="text-sm text-muted-foreground">{point.reason}</div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-lg font-bold text-orange-600">
+                              {point.dropoutCount} siswa
+                            </div>
+                            <div className="text-sm text-muted-foreground">
+                              {point.dropoutPercentage.toFixed(1)}%
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Time Distribution */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Distribusi Waktu Penyelesaian</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <ProgressBar
+                    label="< 1 Jam"
+                    value={(analytics.timeDistribution.under1Hour / analytics.totalStudents) * 100}
+                    count={analytics.timeDistribution.under1Hour}
+                    color="bg-green-500"
+                  />
+                  <ProgressBar
+                    label="1-3 Jam"
+                    value={(analytics.timeDistribution.between1And3Hours / analytics.totalStudents) * 100}
+                    count={analytics.timeDistribution.between1And3Hours}
+                    color="bg-blue-500"
+                  />
+                  <ProgressBar
+                    label="3-6 Jam"
+                    value={(analytics.timeDistribution.between3And6Hours / analytics.totalStudents) * 100}
+                    count={analytics.timeDistribution.between3And6Hours}
+                    color="bg-yellow-500"
+                  />
+                  <ProgressBar
+                    label="6-12 Jam"
+                    value={(analytics.timeDistribution.between6And12Hours / analytics.totalStudents) * 100}
+                    count={analytics.timeDistribution.between6And12Hours}
+                    color="bg-orange-500"
+                  />
+                  <ProgressBar
+                    label="> 12 Jam"
+                    value={(analytics.timeDistribution.over12Hours / analytics.totalStudents) * 100}
+                    count={analytics.timeDistribution.over12Hours}
+                    color="bg-red-500"
+                  />
+                </CardContent>
+              </Card>
+            </>
+          ) : (
+            <Alert>
+              <AlertDescription>Pilih filter untuk melihat analitik</AlertDescription>
+            </Alert>
+          )}
+        </TabsContent>
+
+        {/* Node Analytics Tab */}
+        <TabsContent value="nodes" className="space-y-4">
+          {loadingAnalytics ? (
+            <Skeleton className="h-96" />
+          ) : analytics ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Analitik Per Node</CardTitle>
+                <CardDescription>{analytics.totalNodes} node dalam jalur ini</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {analytics.nodeAnalytics.map((node) => (
+                    <div
+                      key={node.nodeId}
+                      className={`p-4 border rounded-lg ${node.isBottleneck ? 'border-red-300 bg-red-50' : ''}`}
+                    >
+                      <div className="flex justify-between items-start mb-2">
+                        <div>
+                          <div className="font-medium flex items-center gap-2">
+                            {node.nodeName}
+                            {node.isBottleneck && (
+                              <Badge variant="destructive">Bottleneck</Badge>
+                            )}
+                          </div>
+                          <div className="text-sm text-muted-foreground">Order #{node.order}</div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-2xl font-bold">{node.completionRate.toFixed(0)}%</div>
+                          <div className="text-sm text-muted-foreground">Completion</div>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-4 gap-4 text-sm">
+                        <div>
+                          <div className="text-muted-foreground">Attempts</div>
+                          <div className="font-medium">{node.attemptsCount}</div>
+                        </div>
+                        <div>
+                          <div className="text-muted-foreground">Avg Score</div>
+                          <div className="font-medium">{node.averageScore.toFixed(0)}%</div>
+                        </div>
+                        <div>
+                          <div className="text-muted-foreground">Avg Tries</div>
+                          <div className="font-medium">{node.averageAttempts.toFixed(1)}x</div>
+                        </div>
+                        <div>
+                          <div className="text-muted-foreground">Avg Time</div>
+                          <div className="font-medium">{formatTime(node.averageTimeSpent)}</div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          ) : null}
+        </TabsContent>
+
+        {/* Students Tab */}
+        <TabsContent value="students" className="space-y-4">
+          {loadingStudents ? (
+            <Skeleton className="h-96" />
+          ) : students.length > 0 ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Progres Siswa</CardTitle>
+                <CardDescription>{students.length} siswa terdaftar</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {students.map((student) => (
+                    <div key={student.studentId} className="p-4 border rounded-lg">
+                      <div className="flex justify-between items-start mb-3">
+                        <div>
+                          <div className="font-medium flex items-center gap-2">
+                            {student.studentName}
+                            {student.isStuck && (
+                              <Badge variant="outline" className="text-orange-600 border-orange-600">
+                                <AlertTriangle className="w-3 h-3 mr-1" />
+                                Terjebak
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="text-sm text-muted-foreground">{student.email}</div>
+                          {student.currentNode && (
+                            <div className="text-sm text-blue-600">📍 {student.currentNode}</div>
+                          )}
+                        </div>
+                        <div className="text-right">
+                          <div className="text-2xl font-bold">{student.progressPercentage.toFixed(0)}%</div>
+                          <div className="text-sm text-muted-foreground">
+                            {student.nodesCompleted}/{student.totalNodes} node
+                          </div>
+                        </div>
+                      </div>
+                      <Progress value={student.progressPercentage} className="mb-2" />
+                      <div className="grid grid-cols-3 gap-4 text-sm">
+                        <div>
+                          <div className="text-muted-foreground">Avg Score</div>
+                          <div className="font-medium">{student.averageScore.toFixed(0)}%</div>
+                        </div>
+                        <div>
+                          <div className="text-muted-foreground">Time Spent</div>
+                          <div className="font-medium">{formatTime(student.totalTimeSpent)}</div>
+                        </div>
+                        <div>
+                          <div className="text-muted-foreground">Last Active</div>
+                          <div className="font-medium">
+                            {new Date(student.lastActivity).toLocaleDateString('id-ID', { month: 'short', day: 'numeric' })}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <Alert>
+              <AlertDescription>Belum ada siswa yang mengakses jalur ini</AlertDescription>
+            </Alert>
+          )}
+        </TabsContent>
+
+        {/* Comparison Tab */}
+        <TabsContent value="comparison" className="space-y-4">
+          {loadingComparison ? (
+            <Skeleton className="h-96" />
+          ) : comparison ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {comparison.subjects.map((subj, idx) => (
+                <Card key={subj}>
+                  <CardHeader>
+                    <CardTitle className="text-lg">{subj}</CardTitle>
+                    <CardDescription>{comparison.totalStudents[subj]} siswa</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div>
+                      <div className="flex justify-between text-sm mb-1">
+                        <span>Completion Rate</span>
+                        <span className="font-medium">{comparison.completionRates[idx].toFixed(1)}%</span>
+                      </div>
+                      <Progress value={comparison.completionRates[idx]} className="h-2" />
+                    </div>
+                    <div>
+                      <div className="flex justify-between text-sm mb-1">
+                        <span>Average Score</span>
+                        <span className="font-medium">{comparison.averageScores[idx].toFixed(1)}%</span>
+                      </div>
+                      <Progress value={comparison.averageScores[idx]} className="h-2" />
+                    </div>
+                    <div>
+                      <div className="flex justify-between text-sm mb-1">
+                        <span>Dropout Rate</span>
+                        <span className="font-medium">{comparison.dropoutRates[idx].toFixed(1)}%</span>
+                      </div>
+                      <Progress value={comparison.dropoutRates[idx]} className="h-2 bg-red-100" />
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : null}
+        </TabsContent>
+      </Tabs>
+
+      {/* Trending Paths Sidebar */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Flame className="w-5 h-5 text-orange-500" />
+            Jalur Trending
+          </CardTitle>
+          <CardDescription>Jalur paling aktif saat ini</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {loadingTrending ? (
+            <div className="space-y-2">
+              {[1, 2, 3].map(i => <Skeleton key={i} className="h-16" />)}
+            </div>
+          ) : trending.length > 0 ? (
+            <div className="space-y-3">
+              {trending.map((path, idx) => (
+                <div key={path.pathId} className="flex items-center justify-between p-3 border rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <div className="text-2xl font-bold text-muted-foreground">#{idx + 1}</div>
+                    <div>
+                      <div className="font-medium">{path.pathName}</div>
+                      <div className="text-sm text-muted-foreground">
+                        {path.activeStudents} siswa aktif
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {path.trend === 'up' ? (
+                      <TrendingUp className="w-5 h-5 text-green-600" />
+                    ) : path.trend === 'down' ? (
+                      <TrendingDown className="w-5 h-5 text-red-600" />
+                    ) : (
+                      <Activity className="w-5 h-5 text-blue-600" />
+                    )}
+                    <span className="font-medium">{path.completionRate.toFixed(0)}%</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <Alert>
+              <AlertDescription>Belum ada data trending</AlertDescription>
+            </Alert>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function MetricCard({
+  title,
+  value,
+  icon,
+  subtitle,
+  color = 'text-foreground',
+  trend
+}: {
+  title: string;
+  value: string | number;
+  icon: React.ReactNode;
+  subtitle?: string;
+  color?: string;
+  trend?: 'up' | 'down';
+}) {
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
+          <div className="text-muted-foreground">{icon}</div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className={`text-3xl font-bold ${color}`}>{value}</div>
+        {subtitle && (
+          <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
+            {trend === 'up' && <TrendingUp className="w-3 h-3 text-green-600" />}
+            {trend === 'down' && <TrendingDown className="w-3 h-3 text-red-600" />}
+            {subtitle}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ProgressBar({
+  label,
+  value,
+  count,
+  color
+}: {
+  label: string;
+  value: number;
+  count: number;
+  color: string;
+}) {
+  return (
+    <div>
+      <div className="flex justify-between text-sm mb-1">
+        <span>{label}</span>
+        <span className="font-medium">{count} ({value.toFixed(1)}%)</span>
+      </div>
+      <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+        <div
+          className={`h-full ${color} transition-all duration-300`}
+          style={{ width: `${Math.min(value, 100)}%` }}
+        />
+      </div>
+    </div>
+  );
+}
