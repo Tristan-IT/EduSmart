@@ -107,15 +107,8 @@ const Landing = () => {
   const { login, user } = useAuth();
   const [showRegisterModal, setShowRegisterModal] = useState(false);
 
-  useEffect(() => {
-    if (user) {
-      if (user.role === "teacher" || user.role === "admin") {
-        navigate("/dashboard-guru");
-      } else {
-        navigate("/dashboard-siswa");
-      }
-    }
-  }, [user, navigate]);
+  // Redirect logic removed - handled by Login page after successful login
+  // This prevents infinite redirect loops
 
   const handleRegisterClick = (role: 'student' | 'teacher' | 'school') => {
     setShowRegisterModal(false);
