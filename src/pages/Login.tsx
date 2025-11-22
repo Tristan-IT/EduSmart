@@ -70,6 +70,9 @@ const Login = () => {
         localStorage.setItem("schoolId", data.user.schoolId);
       }
 
+      // Store token separately for backward compatibility
+      localStorage.setItem("token", data.token);
+
       // Store token and user data
       login({
         token: data.token,
@@ -82,6 +85,8 @@ const Login = () => {
           className: data.user.className,
         },
       });
+
+      console.log("Login successful, token stored:", data.token ? "✓" : "✗");
 
       toast.success("Login berhasil!");
 

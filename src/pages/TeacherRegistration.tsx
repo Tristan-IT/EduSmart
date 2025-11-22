@@ -124,7 +124,8 @@ const TeacherRegistration = () => {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.message || "Registrasi gagal");
+        console.error("Registration error:", data);
+        throw new Error(data.message || data.error || "Registrasi gagal");
       }
 
       // Success

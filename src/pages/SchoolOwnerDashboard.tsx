@@ -31,6 +31,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { fadeInUp, staggerContainer, scaleIn } from "@/lib/animations";
+import { useAuth } from "@/context/AuthContext";
 
 interface OverviewData {
   totalTeachers: number;
@@ -74,6 +75,7 @@ interface ActivityLog {
 }
 
 const SchoolOwnerDashboard = () => {
+  const { token: authToken } = useAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [showSchoolIdDialog, setShowSchoolIdDialog] = useState(false);
@@ -107,8 +109,15 @@ const SchoolOwnerDashboard = () => {
   const loadDashboardData = async () => {
     setLoading(true);
     try {
-      const token = localStorage.getItem("token");
+      // Get token from AuthContext or fallback to localStorage
+      const token = authToken || localStorage.getItem("token");
       const storedSchoolId = localStorage.getItem("schoolId");
+      
+      if (!token) {
+        setError("Token autentikasi tidak ditemukan. Silakan login kembali.");
+        setLoading(false);
+        return;
+      }
       
       const headers = {
         "Content-Type": "application/json",
@@ -122,6 +131,17 @@ const SchoolOwnerDashboard = () => {
           fetch(`http://localhost:5000/api/school-dashboard/teachers?schoolId=${storedSchoolId}`, { headers }),
           fetch(`http://localhost:5000/api/school-dashboard/classes?schoolId=${storedSchoolId}`, { headers }),
         ]);
+
+      // Check for auth errors
+      if (!overviewRes.ok || !teachersRes.ok || !classesRes.ok) {
+        if (overviewRes.status === 401 || teachersRes.status === 401 || classesRes.status === 401) {
+          setError("Sesi Anda telah berakhir. Silakan login kembali.");
+          // Clear expired token
+          localStorage.removeItem("token");
+          localStorage.removeItem("schoolId");
+          return;
+        }
+      }
 
       const overviewData = await overviewRes.json();
       const teachersData = await teachersRes.json();
