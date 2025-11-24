@@ -16,7 +16,33 @@ import { authenticate } from "../middleware/authenticate.js";
 
 const router = Router();
 
-// All class routes require authentication
+// Public routes (no auth required) - for registration
+router.get("/public/school/:schoolId", async (req, res) => {
+  try {
+    const { schoolId } = req.params;
+    const ClassModel = (await import("../models/Class.js")).default;
+    
+    const classes = await ClassModel.find({ 
+      schoolId, 
+      isActive: true 
+    })
+    .select("classId className displayName shortName grade section specialization majorCode majorName maxStudents currentStudents")
+    .sort({ grade: 1, section: 1 });
+
+    res.json({
+      success: true,
+      data: classes,
+      total: classes.length,
+    });
+  } catch (error: any) {
+    res.status(400).json({
+      success: false,
+      message: error.message,
+    });
+  }
+});
+
+// Protected routes require authentication
 router.use(authenticate);
 
 // Class management routes (school_owner only)

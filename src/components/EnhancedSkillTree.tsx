@@ -83,11 +83,13 @@ export function EnhancedSkillTree({
     const subjectSet = new Set<string>();
     let grade = "SD" as "SD" | "SMP" | "SMA" | "SMK";
 
-    nodes.forEach(node => {
-      classSet.add(node.classNumber);
-      subjectSet.add(node.subject);
-      grade = node.gradeLevel;
-    });
+    if (nodes && Array.isArray(nodes)) {
+      nodes.forEach(node => {
+        classSet.add(node.classNumber);
+        subjectSet.add(node.subject);
+        grade = node.gradeLevel;
+      });
+    }
 
     return {
       classes: Array.from(classSet).sort((a, b) => a - b),
@@ -98,6 +100,8 @@ export function EnhancedSkillTree({
 
   // Filter nodes based on selection
   const filteredNodes = useMemo(() => {
+    if (!nodes || !Array.isArray(nodes)) return [];
+    
     let filtered = nodes;
 
     if (selectedClass !== "all") {
@@ -217,8 +221,13 @@ export function EnhancedSkillTree({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Semua Kelas</SelectItem>
-                  {classes.map(c => (
-                    <SelectItem key={c} value={c.toString()}>Kelas {c}</SelectItem>
+                  {classes?.map((c, idx) => (
+                    <SelectItem
+                      key={c ?? `class-${idx}`}
+                      value={c?.toString() ?? `class-${idx}`}
+                    >
+                      Kelas {c ?? idx + 1}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -246,8 +255,13 @@ export function EnhancedSkillTree({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Semua Mata Pelajaran</SelectItem>
-                  {subjects.map(s => (
-                    <SelectItem key={s} value={s}>{s}</SelectItem>
+                  {subjects?.map((s, idx) => (
+                    <SelectItem
+                      key={s ?? `subject-${idx}`}
+                      value={s ?? `subject-${idx}`}
+                    >
+                      {s ?? `Mata Pelajaran ${idx + 1}`}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -296,7 +310,7 @@ export function EnhancedSkillTree({
 
                   {/* Nodes at this level */}
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {nodesByLevel[level].map((node) => (
+                    {nodesByLevel[level]?.map((node) => (
                       <SkillNodeCard
                         key={node.id}
                         node={node}

@@ -4,8 +4,6 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Trophy, Flame, TrendingUp, Medal, Crown, Star, Zap, Award, Users } from "lucide-react";
-import { mockLeaderboard } from "@/data/gamificationData";
-import { mockStudents } from "@/data/mockData";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { AnimatedCounter } from "@/components/ui/animated-counter";
@@ -20,12 +18,42 @@ import {
   bounce
 } from "@/lib/animations";
 import { cn } from "@/lib/utils";
+import { apiClient } from "@/lib/apiClient";
+import { useAuth } from "@/context/AuthContext";
+
+interface LeaderboardEntry {
+  studentId: string;
+  name: string;
+  rank: number;
+  xp: number;
+  weeklyXP: number;
+  level: number;
+  streak: number;
+  bestStreak: number;
+  league: string;
+  avatar: string;
+}
+
+interface CurrentUser {
+  _id: string;
+  name: string;
+  email: string;
+  xp: number;
+  level: number;
+  streak: number;
+  bestStreak: number;
+  league: string;
+  weeklyXP: number;
+  rank: number | null;
+}
 
 const Leaderboard = () => {
-  const currentUserId = '1'; // Tristan Firdaus
-  const currentStudent = mockStudents.find(s => s.id === currentUserId) || mockStudents[0];
+  const { userId } = useAuth();
   const [profileImage, setProfileImage] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'all' | 'league' | 'friends'>('all');
+  const [leaderboardData, setLeaderboardData] = useState<LeaderboardEntry[]>([]);
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     // Load profile image from localStorage
@@ -33,25 +61,48 @@ const Leaderboard = () => {
     setProfileImage(savedImage);
   }, []);
 
+  // Fetch leaderboard data
+  useEffect(() => {
+    const fetchLeaderboard = async () => {
+      try {
+        setLoading(true);
+        const params: any = { limit: 50 };
+        
+        // Add league filter for league tab
+        if (activeTab === 'league' && currentUser?.league) {
+          params.league = currentUser.league;
+        }
+
+        const url = `/gamification/leaderboard?${new URLSearchParams(params as any).toString()}`;
+        const response: any = await apiClient.get(url);
+        
+        if (response.success) {
+          setLeaderboardData(response.data.leaderboard);
+          setCurrentUser(response.data.currentUser);
+        }
+      } catch (error) {
+        console.error('Error fetching leaderboard:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchLeaderboard();
+  }, [activeTab]);
+
   // Filter leaderboard based on active tab
   const filteredLeaderboard = useMemo(() => {
-    if (activeTab === 'league') {
-      // Filter by current user's league
-      return mockLeaderboard
-        .filter(entry => entry.league === currentStudent.league)
-        .sort((a, b) => (b.weeklyXP || 0) - (a.weeklyXP || 0))
-        .map((entry, index) => ({ ...entry, rank: index + 1 }));
-    } else if (activeTab === 'friends') {
-      // TODO: Filter by friends when friends system is implemented
-      return mockLeaderboard.filter(entry => entry.studentId !== currentUserId).slice(0, 3);
+    if (activeTab === 'friends') {
+      // For friends tab, show classmates or top players (temporary)
+      return leaderboardData.filter(entry => entry.studentId !== userId).slice(0, 10);
     }
-    // Default: show all by total XP
-    return mockLeaderboard;
-  }, [activeTab, currentStudent.league]);
+    // For 'all' and 'league' tabs, backend already filters
+    return leaderboardData;
+  }, [activeTab, leaderboardData, userId]);
 
   // Helper to render avatar (photo or emoji)
-  const renderAvatar = (studentId: string, emoji: string, size: 'sm' | 'md' | 'lg' = 'md') => {
-    const isCurrentUser = studentId === currentUserId;
+  const renderAvatar = (studentId: string, avatarUrl: string, size: 'sm' | 'md' | 'lg' = 'md') => {
+    const isCurrentUser = studentId === userId;
     const hasPhoto = isCurrentUser && profileImage;
     
     const sizeClasses = {
@@ -64,17 +115,36 @@ const Leaderboard = () => {
       return (
         <Avatar className={`${sizeClasses[size]} border-2 border-white shadow-lg`}>
           <AvatarImage src={profileImage} alt="Profile" className="object-cover" />
-          <AvatarFallback className={`${sizeClasses[size].split(' ')[2]}`}>{emoji}</AvatarFallback>
+          <AvatarFallback className={`${sizeClasses[size].split(' ')[2]}`}>
+            {avatarUrl ? <AvatarImage src={avatarUrl} /> : '👤'}
+          </AvatarFallback>
         </Avatar>
       );
     }
 
     return (
-      <div className={`${sizeClasses[size]} flex items-center justify-center`}>
-        {emoji}
-      </div>
+      <Avatar className={`${sizeClasses[size]} border-2 border-white shadow-lg`}>
+        <AvatarImage src={avatarUrl} alt="Avatar" />
+        <AvatarFallback className={`${sizeClasses[size].split(' ')[2]}`}>👤</AvatarFallback>
+      </Avatar>
     );
   };
+
+  if (loading) {
+    return (
+      <SidebarProvider>
+        <div className="min-h-screen w-full flex">
+          <AppSidebar role="student" />
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+              <p className="text-muted-foreground">Memuat leaderboard...</p>
+            </div>
+          </div>
+        </div>
+      </SidebarProvider>
+    );
+  }
 
   return (
     <SidebarProvider>
@@ -114,7 +184,7 @@ const Leaderboard = () => {
                   Semua
                 </TabsTrigger>
                 <TabsTrigger value="league" className="flex items-center gap-2">
-                  <LeagueIcon tier={currentStudent.league} size="sm" />
+                  <LeagueIcon tier={currentUser?.league || 'bronze'} size="sm" />
                   Liga Saya
                 </TabsTrigger>
                 <TabsTrigger value="friends" className="flex items-center gap-2">
@@ -125,20 +195,53 @@ const Leaderboard = () => {
             </Tabs>
 
             {/* League Info Banner (shown only in Liga Saya tab) */}
-            {activeTab === 'league' && (
+            {activeTab === 'league' && currentUser && (
               <motion.div
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
                 className="mb-6 p-4 rounded-lg bg-gradient-to-r from-blue-500/10 to-purple-500/10 border border-blue-200"
               >
                 <div className="flex items-center gap-3">
-                  <LeagueIcon tier={currentStudent.league} size="md" />
+                  <LeagueIcon tier={currentUser.league} size="md" />
                   <div>
-                    <h3 className="font-bold capitalize">{currentStudent.league} League</h3>
+                    <h3 className="font-bold capitalize">{currentUser.league} League</h3>
                     <p className="text-sm text-muted-foreground">
                       Kompetisi mingguan dalam liga kamu
                     </p>
                   </div>
+                </div>
+              </motion.div>
+            )}
+
+            {/* Empty State */}
+            {filteredLeaderboard.length === 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="text-center py-16"
+              >
+                <motion.div
+                  animate={{ 
+                    scale: [1, 1.1, 1],
+                    rotate: [0, 5, -5, 0]
+                  }}
+                  transition={{ duration: 3, repeat: Infinity }}
+                  className="inline-block mb-6"
+                >
+                  <Trophy className="w-24 h-24 text-muted-foreground/30 mx-auto" />
+                </motion.div>
+                <h3 className="text-2xl font-bold mb-2">Belum Ada Data</h3>
+                <p className="text-muted-foreground mb-6">
+                  {activeTab === 'league' 
+                    ? 'Belum ada siswa lain di liga kamu'
+                    : activeTab === 'friends'
+                    ? 'Belum ada teman atau teman sekelas'
+                    : 'Belum ada data leaderboard tersedia'}
+                </p>
+                <div className="max-w-md mx-auto p-4 bg-muted/50 rounded-lg">
+                  <p className="text-sm text-muted-foreground">
+                    💡 Mulai belajar dan kumpulkan XP untuk muncul di leaderboard!
+                  </p>
                 </div>
               </motion.div>
             )}
@@ -178,15 +281,15 @@ const Leaderboard = () => {
                         animate={{ y: [0, -10, 0] }}
                         transition={{ duration: 2, repeat: Infinity }}
                       >
-                        {renderAvatar(mockLeaderboard[1].studentId, mockLeaderboard[1].avatar, 'md')}
+                        {renderAvatar(filteredLeaderboard[1].studentId, filteredLeaderboard[1].avatar, 'md')}
                       </motion.div>
                       <Badge className="mb-2 bg-gradient-to-r from-gray-300 to-gray-500 text-white border-0">
                         <Medal className="w-3 h-3 mr-1" />
                         #2
                       </Badge>
-                      <h4 className="font-bold text-lg mb-1">{mockLeaderboard[1].name}</h4>
+                      <h4 className="font-bold text-lg mb-1">{filteredLeaderboard[1].name}</h4>
                       <p className="text-sm font-semibold text-muted-foreground mb-3">
-                        <AnimatedCounter value={mockLeaderboard[1].xp} /> XP
+                        <AnimatedCounter value={filteredLeaderboard[1].xp} /> XP
                       </p>
                       <div className="flex items-center justify-center gap-2 text-sm">
                         <motion.div
@@ -195,7 +298,7 @@ const Leaderboard = () => {
                         >
                           <Flame className="w-4 h-4 text-orange-500 fill-orange-500" />
                         </motion.div>
-                        <span className="font-medium">{mockLeaderboard[1].streak} hari</span>
+                        <span className="font-medium">{filteredLeaderboard[1].streak} hari</span>
                       </div>
                     </CardContent>
                   </Card>
@@ -260,15 +363,15 @@ const Leaderboard = () => {
                         }}
                         transition={{ duration: 3, repeat: Infinity }}
                       >
-                        {renderAvatar(mockLeaderboard[0].studentId, mockLeaderboard[0].avatar, 'lg')}
+                        {renderAvatar(filteredLeaderboard[0].studentId, filteredLeaderboard[0].avatar, 'lg')}
                       </motion.div>
                       <Badge className="mb-3 bg-white/20 text-white border-white/30 backdrop-blur">
                         <Crown className="w-4 h-4 mr-1" />
                         #1 Champion
                       </Badge>
-                      <h4 className="font-bold text-xl mb-2">{mockLeaderboard[0].name}</h4>
+                      <h4 className="font-bold text-xl mb-2">{filteredLeaderboard[0].name}</h4>
                       <p className="text-lg font-bold mb-4">
-                        <AnimatedCounter value={mockLeaderboard[0].xp} /> XP
+                        <AnimatedCounter value={filteredLeaderboard[0].xp} /> XP
                       </p>
                       <div className="flex items-center justify-center gap-2">
                         <motion.div
@@ -277,7 +380,7 @@ const Leaderboard = () => {
                         >
                           <Flame className="w-5 h-5 fill-white" />
                         </motion.div>
-                        <span className="font-bold text-lg">{mockLeaderboard[0].streak} hari streak</span>
+                        <span className="font-bold text-lg">{filteredLeaderboard[0].streak} hari streak</span>
                       </div>
                     </CardContent>
                   </Card>
@@ -302,15 +405,15 @@ const Leaderboard = () => {
                         animate={{ y: [0, -10, 0] }}
                         transition={{ duration: 2, repeat: Infinity, delay: 0.3 }}
                       >
-                        {renderAvatar(mockLeaderboard[2].studentId, mockLeaderboard[2].avatar, 'md')}
+                        {renderAvatar(filteredLeaderboard[2].studentId, filteredLeaderboard[2].avatar, 'md')}
                       </motion.div>
                       <Badge className="mb-2 bg-gradient-to-r from-orange-500 to-orange-700 text-white border-0">
                         <Medal className="w-3 h-3 mr-1" />
                         #3
                       </Badge>
-                      <h4 className="font-bold text-lg mb-1">{mockLeaderboard[2].name}</h4>
+                      <h4 className="font-bold text-lg mb-1">{filteredLeaderboard[2].name}</h4>
                       <p className="text-sm font-semibold text-muted-foreground mb-3">
-                        <AnimatedCounter value={mockLeaderboard[2].xp} /> XP
+                        <AnimatedCounter value={filteredLeaderboard[2].xp} /> XP
                       </p>
                       <div className="flex items-center justify-center gap-2 text-sm">
                         <motion.div
@@ -332,7 +435,7 @@ const Leaderboard = () => {
             <div className="space-y-3">
               <AnimatePresence mode="wait">
                 {filteredLeaderboard.map((entry, index) => {
-                    const isCurrentUser = entry.studentId === currentUserId;
+                    const isCurrentUser = entry.studentId === userId;
                     const isTopThree = entry.rank <= 3;
                     
                     return (
@@ -497,7 +600,7 @@ const Leaderboard = () => {
                     >
                       <Trophy className="w-8 h-8 mx-auto mb-2" />
                       <div className="text-4xl font-bold mb-1">
-                        #{mockLeaderboard[0].rank}
+                        #{filteredLeaderboard[0]?.rank || 1}
                       </div>
                       <p className="text-sm text-white/80">Peringkat</p>
                     </motion.div>
@@ -507,7 +610,7 @@ const Leaderboard = () => {
                     >
                       <Zap className="w-8 h-8 mx-auto mb-2 fill-yellow-300 text-yellow-300" />
                       <div className="text-4xl font-bold mb-1">
-                        <AnimatedCounter value={mockLeaderboard[0].xp} />
+                        <AnimatedCounter value={filteredLeaderboard[0]?.xp || 0} />
                       </div>
                       <p className="text-sm text-white/80">Total XP</p>
                     </motion.div>
@@ -522,7 +625,7 @@ const Leaderboard = () => {
                         <Flame className="w-8 h-8 mx-auto mb-2 fill-orange-400 text-orange-400" />
                       </motion.div>
                       <div className="text-4xl font-bold mb-1 flex items-center justify-center gap-2">
-                        {mockLeaderboard[0].streak}
+                        {filteredLeaderboard[0]?.streak || 0}
                       </div>
                       <p className="text-sm text-white/80">Hari Streak</p>
                     </motion.div>

@@ -3,6 +3,7 @@ import UserModel from "../models/User.js";
 import ClassModel from "../models/Class.js";
 import TeacherAnalyticsModel from "../models/TeacherAnalytics.js";
 import StudentProfileModel from "../models/StudentProfile.js";
+import InterventionModel from "../models/Intervention.js";
 
 /**
  * Teacher Analytics Service
@@ -491,5 +492,234 @@ export const getMyActivityTimeline = async (
     }));
   } catch (error: any) {
     throw new Error(`Failed to get activity timeline: ${error.message}`);
+  }
+};
+
+/**
+ * Get recent student activities for teacher's classes
+ * Returns latest 10 activities from students in teacher's classes
+ */
+export const getRecentStudentActivities = async (
+  teacherId: string,
+  limit: number = 10
+): Promise<any[]> => {
+  try {
+    // Get teacher
+    const teacher = await UserModel.findById(teacherId);
+    if (!teacher || teacher.role !== "teacher") {
+      throw new Error("Teacher not found");
+    }
+
+    // Get teacher's classes
+    const classes = await ClassModel.find({
+      $or: [
+        { homeRoomTeacher: teacher._id },
+        { "subjectTeachers.teacher": teacher._id },
+      ],
+    }).select("_id");
+
+    const classIds = classes.map((c) => c._id);
+
+    // Get students from these classes
+    const students = await UserModel.find({
+      role: "student",
+      class: { $in: classIds },
+    }).select("_id name");
+
+    const studentIds = students.map((s) => s._id);
+
+    // Get student profiles with recent activity (using lastActive and updatedAt)
+    const recentActivities = await StudentProfileModel.find({
+      student: { $in: studentIds },
+    })
+      .sort({ lastActive: -1, updatedAt: -1 })
+      .limit(limit)
+      .populate("student", "name email")
+      .lean();
+
+    // Transform to activity format
+    return recentActivities.map((profile: any) => {
+      const activity: any = {
+        id: profile._id.toString(),
+        studentId: profile.student._id.toString(),
+        studentName: profile.student.name,
+        timestamp: profile.lastActive || profile.updatedAt,
+        type: "activity",
+        description: "Aktivitas pembelajaran",
+      };
+
+      // Determine activity type based on recent changes
+      if (profile.xp > 0) {
+        activity.type = "xp_gained";
+        activity.description = "Mendapatkan XP";
+        activity.xpEarned = Math.min(profile.xp, 100); // Show recent XP gain
+      }
+
+      if (profile.completedLessons > 0) {
+        activity.type = "lesson_completed";
+        activity.description = `Menyelesaikan ${profile.completedLessons} lessons`;
+      }
+
+      if (profile.currentStreak >= 3) {
+        activity.streakDays = profile.currentStreak;
+      }
+
+      activity.studentLevel = profile.level;
+      activity.totalXP = profile.xp;
+
+      return activity;
+    });
+  } catch (error: any) {
+    throw new Error(`Failed to get recent student activities: ${error.message}`);
+  }
+};
+
+/**
+ * Create a new intervention
+ */
+export const createIntervention = async (data: {
+  teacherId: string;
+  studentId: string;
+  type: string;
+  title: string;
+  note: string;
+  dueDate?: string;
+  priority?: string;
+}): Promise<any> => {
+  try {
+    // Get teacher
+    const teacher = await UserModel.findById(data.teacherId);
+    if (!teacher || teacher.role !== "teacher") {
+      throw new Error("Teacher not found");
+    }
+
+    // Get student
+    const student = await UserModel.findById(data.studentId);
+    if (!student || student.role !== "student") {
+      throw new Error("Student not found");
+    }
+
+    // Verify teacher has access to this student (same school and class)
+    const classes = await ClassModel.find({
+      $or: [
+        { homeRoomTeacher: teacher._id },
+        { "subjectTeachers.teacher": teacher._id },
+      ],
+    }).select("_id");
+
+    const classIds = classes.map((c) => c._id);
+    const studentInClass = await UserModel.findOne({
+      _id: student._id,
+      class: { $in: classIds },
+    });
+
+    if (!studentInClass) {
+      throw new Error("You do not have access to this student");
+    }
+
+    // Create intervention
+    const intervention = await InterventionModel.create({
+      teacher: teacher._id,
+      student: student._id,
+      school: teacher.school,
+      type: data.type,
+      title: data.title,
+      note: data.note,
+      dueDate: data.dueDate ? new Date(data.dueDate) : undefined,
+      priority: data.priority || "medium",
+      status: "pending",
+    });
+
+    // Populate and return
+    const populated = await InterventionModel.findById(intervention._id)
+      .populate("student", "name email")
+      .populate("teacher", "name email")
+      .lean();
+
+    return populated;
+  } catch (error: any) {
+    throw new Error(`Failed to create intervention: ${error.message}`);
+  }
+};
+
+/**
+ * Get teacher's interventions
+ */
+export const getMyInterventions = async (
+  teacherId: string,
+  limit: number = 20
+): Promise<any[]> => {
+  try {
+    // Get teacher
+    const teacher = await UserModel.findById(teacherId);
+    if (!teacher || teacher.role !== "teacher") {
+      throw new Error("Teacher not found");
+    }
+
+    // Get interventions
+    const interventions = await InterventionModel.find({
+      teacher: teacher._id,
+    })
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .populate("student", "name email")
+      .lean();
+
+    return interventions.map((intervention: any) => ({
+      id: intervention._id.toString(),
+      studentId: intervention.student._id.toString(),
+      studentName: intervention.student.name,
+      studentEmail: intervention.student.email,
+      type: intervention.type,
+      title: intervention.title,
+      note: intervention.note,
+      dueDate: intervention.dueDate,
+      status: intervention.status,
+      priority: intervention.priority,
+      createdAt: intervention.createdAt,
+      updatedAt: intervention.updatedAt,
+      completedAt: intervention.completedAt,
+    }));
+  } catch (error: any) {
+    throw new Error(`Failed to get interventions: ${error.message}`);
+  }
+};
+
+/**
+ * Update intervention status
+ */
+export const updateInterventionStatus = async (
+  interventionId: string,
+  teacherId: string,
+  status: string
+): Promise<any> => {
+  try {
+    // Get intervention
+    const intervention = await InterventionModel.findById(interventionId);
+    if (!intervention) {
+      throw new Error("Intervention not found");
+    }
+
+    // Verify ownership
+    if (intervention.teacher.toString() !== teacherId) {
+      throw new Error("You do not have permission to update this intervention");
+    }
+
+    // Update status
+    intervention.status = status as any;
+    if (status === "completed") {
+      intervention.completedAt = new Date();
+    }
+
+    await intervention.save();
+
+    // Populate and return
+    const populated = await InterventionModel.findById(intervention._id)
+      .populate("student", "name email")
+      .lean();
+
+    return populated;
+  } catch (error: any) {
+    throw new Error(`Failed to update intervention: ${error.message}`);
   }
 };

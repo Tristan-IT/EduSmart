@@ -42,16 +42,29 @@ export const login = async (req: Request, res: Response) => {
 
   try {
     const { user, token } = await loginWithEmail(req.body.email, req.body.password);
+    
+    // For school owners, include schoolId in response
+    const userResponse: any = {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      avatar: user.avatar,
+      className: user.className,
+    };
+    
+    if (user.role === 'school_owner' && user.ownedSchool) {
+      // Get schoolId from the owned school
+      const SchoolModel = (await import('../models/School.js')).default;
+      const school = await SchoolModel.findById(user.ownedSchool).select('schoolId').lean();
+      if (school) {
+        userResponse.schoolId = school.schoolId;
+      }
+    }
+    
     return res.json({
       token,
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        avatar: user.avatar,
-        className: user.className,
-      },
+      user: userResponse,
     });
   } catch (error) {
     return res.status(401).json({ message: (error as Error).message });

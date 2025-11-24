@@ -28,6 +28,8 @@ import progressRouter from "./routes/progress.js";
 import pathRouter from "./routes/paths.js";
 import lessonRouter from "./routes/lessons.js";
 import aiRouter from "./routes/ai.js";
+import notificationRouter from "./routes/notification.js";
+import teacherSkillTreeRouter from "./routes/teacherSkillTree.js";
 
 export const createApp = () => {
   const app = express();
@@ -98,6 +100,13 @@ export const createApp = () => {
   app.use("/api/teacher-registration", teacherRegistrationRouter);
   app.use("/api/student-registration", studentRegistrationRouter);
   
+  // Alias routes for login and profile (frontend expects /api/teacher/... and /api/student/...)
+  // Teacher routes: /api/teacher/login (registration), /api/teacher/profile/me (profile)
+  app.use("/api/teacher", teacherRouter);
+  app.use("/api/teacher", teacherRegistrationRouter);
+  app.use("/api/student", studentRouter);
+  app.use("/api/student", studentRegistrationRouter);
+  
   // Class management routes (requires authentication)
   app.use("/api/classes", classRouter);
   
@@ -115,6 +124,10 @@ export const createApp = () => {
   
   // AI integration routes (requires authentication)
   app.use("/api/ai", aiRouter);
+  
+  // Notification routes
+  app.use("/api/notifications", notificationRouter);
+  app.use("/api/teacher/skill-tree", teacherSkillTreeRouter);
   
   // School dashboard routes (school_owner only)
   app.use("/api/school-dashboard", schoolDashboardRouter);

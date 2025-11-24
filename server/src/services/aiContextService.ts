@@ -36,7 +36,7 @@ export const buildStudentContext = async (
   if (includeProgress) {
     const progress = await UserProgressModel.findOne({ userId });
     if (progress) {
-      const completedNodes = progress.completedNodes || [];
+      const completedNodes = (progress as any).completedNodes || [];
       const recentErrors = completedNodes
         .filter((cn: any) => cn.score < 70)
         .slice(-5)
@@ -49,15 +49,15 @@ export const buildStudentContext = async (
 
       context.progress = {
         totalCompleted: completedNodes.length,
-        currentStreak: progress.currentStreak || 0,
-        longestStreak: progress.longestStreak || 0,
+        currentStreak: (progress as any).currentStreak || 0,
+        longestStreak: (progress as any).longestStreak || 0,
         averageScore:
           completedNodes.length > 0
             ? completedNodes.reduce((sum: number, cn: any) => sum + (cn.score || 0), 0) /
               completedNodes.length
             : 0,
         recentErrors,
-        lastActivityDate: progress.lastActivityDate,
+        lastActivityDate: (progress as any).lastActivityDate,
       };
     }
   }

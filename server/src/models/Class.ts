@@ -110,7 +110,6 @@ const ClassSchema = new Schema<IClass>(
   {
     classId: {
       type: String,
-      required: true,
       unique: true,
       index: true,
     },

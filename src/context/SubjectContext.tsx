@@ -40,6 +40,14 @@ export const SubjectProvider: React.FC<{ children: ReactNode }> = ({ children })
   const { user } = useAuth();
 
   const loadSubjects = async () => {
+    // Skip loading if not authenticated
+    const token = localStorage.getItem('token');
+    if (!token) {
+      setLoadingSubjects(false);
+      setSubjects([]);
+      return;
+    }
+
     try {
       setLoadingSubjects(true);
       const response = await subjectApi.getAll();
@@ -59,7 +67,11 @@ export const SubjectProvider: React.FC<{ children: ReactNode }> = ({ children })
   };
 
   const loadProgress = async () => {
-    if (!user?.id || user.role !== 'student') return;
+    // Only load progress for students
+    if (!user?.id || user.role !== 'student') {
+      setSubjectProgress({});
+      return;
+    }
     
     try {
       const response = await progressApi.getStudentProgress(user.id);
@@ -79,12 +91,19 @@ export const SubjectProvider: React.FC<{ children: ReactNode }> = ({ children })
       }
     } catch (error) {
       console.error('Failed to load progress:', error);
-      // Silently fail - progress will remain empty
+      // Silently fail for non-students - progress will remain empty
+      setSubjectProgress({});
     }
   };
 
   useEffect(() => {
-    loadSubjects();
+    // Only load if authenticated
+    const token = localStorage.getItem('token');
+    if (token) {
+      loadSubjects();
+    } else {
+      setLoadingSubjects(false);
+    }
   }, []);
 
   useEffect(() => {

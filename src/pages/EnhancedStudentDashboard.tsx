@@ -24,13 +24,24 @@ import {
 import { Progress } from "@/components/ui/progress";
 
 interface ClassInfo {
-  classId: string;
-  className: string;
-  grade: string;
-  homeroomTeacher: string;
-  subjectTeachers: Array<{ name: string; subjects: string[] }>;
-  studentCount: number;
-  capacity: number;
+  class: {
+    classId: string;
+    className: string;
+    grade: string;
+    section: string;
+    academicYear: string;
+    maxStudents: number;
+    currentStudents: number;
+  };
+  school: {
+    schoolId: string;
+    schoolName: string;
+  };
+  homeRoomTeacher?: {
+    name: string;
+    email: string;
+  };
+  subjectTeachers: Array<{ name: string; email: string; subjects: string[] }>;
 }
 
 interface Classmate {
@@ -89,26 +100,26 @@ const EnhancedStudentDashboard = () => {
       };
 
       // Load student dashboard data
-      const [classRes, classmatesRes, leaderboardRes, rankRes, activityRes] =
+      const [classRes, classmatesRes, leaderboardRes, rankRes] =
         await Promise.all([
           fetch("http://localhost:5000/api/student-class/my-class", { headers }),
-          fetch("http://localhost:5000/api/student-class/classmates", { headers }),
+          fetch("http://localhost:5000/api/student-class/my-classmates", { headers }),
           fetch("http://localhost:5000/api/student-class/class-leaderboard", { headers }),
-          fetch("http://localhost:5000/api/student-class/school-rank", { headers }),
-          fetch("http://localhost:5000/api/student-class/recent-activity", { headers }),
+          fetch("http://localhost:5000/api/student-class/my-rank", { headers }),
         ]);
 
       const classData = await classRes.json();
       const classmatesData = await classmatesRes.json();
       const leaderboardData = await leaderboardRes.json();
       const rankData = await rankRes.json();
-      const activityData = await activityRes.json();
 
       if (classData.success) setClassInfo(classData.data);
       if (classmatesData.success) setClassmates(classmatesData.data);
       if (leaderboardData.success) setLeaderboard(leaderboardData.data);
       if (rankData.success) setSchoolRank(rankData.data);
-      if (activityData.success) setRecentActivities(activityData.data);
+      
+      // Recent activities: TODO - implement backend endpoint
+      setRecentActivities([]);
     } catch (err: any) {
       setError(err.message || "Gagal memuat data dashboard");
     } finally {
@@ -158,20 +169,20 @@ const EnhancedStudentDashboard = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <p className="text-sm text-gray-600">Kelas</p>
-                  <p className="text-xl font-bold">{classInfo.className}</p>
+                  <p className="text-xl font-bold">{classInfo.class.className}</p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-600">Tingkat</p>
-                  <p className="text-xl font-bold">{classInfo.grade}</p>
+                  <p className="text-xl font-bold">{classInfo.class.grade} {classInfo.class.section}</p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-600">Wali Kelas</p>
-                  <p className="text-lg font-medium">{classInfo.homeroomTeacher}</p>
+                  <p className="text-lg font-medium">{classInfo.homeRoomTeacher?.name || "Belum ditentukan"}</p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-600">Jumlah Siswa</p>
                   <p className="text-lg font-medium">
-                    {classInfo.studentCount}/{classInfo.capacity}
+                    {classInfo.class.currentStudents}/{classInfo.class.maxStudents}
                   </p>
                 </div>
               </div>
@@ -179,13 +190,13 @@ const EnhancedStudentDashboard = () => {
               <div className="pt-4 border-t">
                 <p className="text-sm text-gray-600 mb-3">Guru Mata Pelajaran</p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {classInfo.subjectTeachers.map((teacher, index) => (
+                  {(classInfo.subjectTeachers || []).map((teacher, index) => (
                     <div key={index} className="flex items-start gap-2 p-3 bg-white rounded-lg">
                       <GraduationCap className="h-4 w-4 text-indigo-600 mt-0.5" />
                       <div>
                         <p className="font-medium text-sm">{teacher.name}</p>
                         <div className="flex flex-wrap gap-1 mt-1">
-                          {teacher.subjects.map((subject) => (
+                          {(teacher.subjects || []).map((subject) => (
                             <Badge key={subject} variant="outline" className="text-xs">
                               {subject}
                             </Badge>
@@ -352,7 +363,7 @@ const EnhancedStudentDashboard = () => {
           <CardContent>
             {classmates.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {classmates.map((classmate) => (
+                {(classmates || []).map((classmate) => (
                   <div
                     key={classmate.studentId}
                     className="p-4 border rounded-lg hover:shadow-md transition-shadow"

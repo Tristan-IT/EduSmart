@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/context/AuthContext";
 
 export interface TopbarUser {
   name: string;
@@ -12,7 +13,7 @@ export interface TopbarUser {
 }
 
 export interface TopbarProps {
-  user: TopbarUser;
+  user?: TopbarUser;
   onSearch?: (term: string) => void;
   onMenuToggle?: () => void;
   notifications?: number;
@@ -29,7 +30,16 @@ export interface TopbarProps {
  * ```
  */
 export const Topbar = ({ user, onSearch, onMenuToggle, notifications = 0, className }: TopbarProps) => {
+  const { user: authUser } = useAuth();
   const [value, setValue] = useState("");
+
+  const displayUser: TopbarUser = {
+    name: user?.name ?? authUser?.name ?? "Pengguna",
+    avatarUrl: user?.avatarUrl ?? authUser?.avatar,
+    role: user?.role ?? authUser?.role,
+  };
+
+  const initials = displayUser.name.slice(0, 2).toUpperCase();
 
   const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
     const term = event.target.value;
@@ -73,15 +83,15 @@ export const Topbar = ({ user, onSearch, onMenuToggle, notifications = 0, classN
 
         <div className="flex items-center gap-2">
           <Avatar className="h-9 w-9">
-            {user.avatarUrl ? (
-              <AvatarImage src={user.avatarUrl} alt={user.name} />
+            {displayUser.avatarUrl ? (
+              <AvatarImage src={displayUser.avatarUrl} alt={displayUser.name} />
             ) : (
-              <AvatarFallback>{user.name.slice(0, 2).toUpperCase()}</AvatarFallback>
+              <AvatarFallback>{initials}</AvatarFallback>
             )}
           </Avatar>
           <div className="hidden flex-col text-sm leading-tight sm:flex">
-            <span className="font-semibold text-foreground">{user.name}</span>
-            {user.role && <span className="text-xs text-muted-foreground">{user.role}</span>}
+            <span className="font-semibold text-foreground">{displayUser.name}</span>
+            {displayUser.role && <span className="text-xs text-muted-foreground">{displayUser.role}</span>}
           </div>
         </div>
       </div>

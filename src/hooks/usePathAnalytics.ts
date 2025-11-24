@@ -136,7 +136,10 @@ export function usePathAnalytics(
         setAnalytics(response.analytics);
       }
     } catch (err: any) {
+      console.warn('Analytics API not available, using fallback:', err.message);
       setError(err.response?.data?.message || 'Failed to load analytics');
+      // Set null instead of throwing to prevent crash
+      setAnalytics(null);
     } finally {
       setLoading(false);
     }

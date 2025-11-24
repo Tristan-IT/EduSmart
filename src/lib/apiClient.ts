@@ -1,5 +1,5 @@
 const API_BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:5000/api";
-const STORAGE_KEY = "adapti.portal.auth";
+const STORAGE_KEY = "token"; // Unified storage key
 
 type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
@@ -9,7 +9,12 @@ interface RequestOptions extends RequestInit {
 
 const getStoredToken = () => {
   if (typeof window === "undefined") return null;
-  const raw = window.localStorage.getItem(STORAGE_KEY);
+  // Try direct token key first
+  let token = window.localStorage.getItem(STORAGE_KEY);
+  if (token) return token;
+  
+  // Fallback to old format for backward compatibility
+  const raw = window.localStorage.getItem("adapti.portal.auth");
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as { token?: string };

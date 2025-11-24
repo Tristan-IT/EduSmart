@@ -5,6 +5,8 @@ import { StudentProfileModel, type StudentProfileDocument } from "../models/Stud
 import { TelemetryEventModel } from "../models/TelemetryEvent.js";
 import bcrypt from "bcryptjs";
 import ClassModel from "../models/Class.js";
+import SchoolModel from "../models/School.js";
+import SubjectModel from "../models/Subject.js";
 
 const mapStudent = (profile: StudentProfileDocument & { user: UserDocument }) => {
   const user = profile.user;
@@ -185,7 +187,17 @@ export const getAllTeachersBySchool = async (req: Request, res: Response) => {
 export const updateTeacher = async (req: Request, res: Response) => {
   try {
     const { teacherId } = req.params;
-    const { name, email, phone, subjects } = req.body;
+    const {
+      name,
+      email,
+      phone,
+      employeeId,
+      qualification,
+      address,
+      bio,
+      subjects, // Array of subject names
+      classIds, // Array of class classId strings
+    } = req.body;
     const user = req.user as any;
 
     if (!user || user.role !== "school_owner") {
@@ -197,19 +209,88 @@ export const updateTeacher = async (req: Request, res: Response) => {
       return res.status(404).json({ message: "Teacher not found" });
     }
 
-    // Update user
+    // Get school to validate subjects and classes belong to the same school
+    const school = await SchoolModel.findOne({ owner: user.userId });
+    if (!school) {
+      return res.status(404).json({ message: "School not found" });
+    }
+
+    // Update basic user info
     if (name) teacher.name = name;
     if (email) teacher.email = email;
+    if (employeeId) (teacher as any).employeeId = employeeId;
     await teacher.save();
 
-    // Update profile
+    // Process subjects - convert names to ObjectIds
+    let subjectObjectIds: any[] = [];
+    let subjectNames: string[] = [];
+    if (subjects && Array.isArray(subjects) && subjects.length > 0) {
+      subjectNames = subjects;
+      const foundSubjects = await SubjectModel.find({
+        school: school._id,
+        name: { $in: subjectNames },
+        isActive: true,
+      });
+      
+      if (foundSubjects.length !== subjectNames.length) {
+        const foundNames = foundSubjects.map(s => s.name);
+        const missingSubjects = subjectNames.filter(name => !foundNames.includes(name));
+        return res.status(400).json({ 
+          message: `Mata pelajaran tidak ditemukan: ${missingSubjects.join(", ")}` 
+        });
+      }
+      
+      subjectObjectIds = foundSubjects.map(s => s._id);
+    }
+
+    // Process classes - convert classId strings to ObjectIds
+    let classObjectIds: any[] = [];
+    let validClassIds: string[] = [];
+    if (classIds && Array.isArray(classIds) && classIds.length > 0) {
+      validClassIds = classIds;
+      const foundClasses = await ClassModel.find({
+        school: school._id,
+        classId: { $in: validClassIds },
+      });
+      
+      if (foundClasses.length !== validClassIds.length) {
+        const foundIds = foundClasses.map(c => c.classId);
+        const missingClasses = validClassIds.filter(id => !foundIds.includes(id));
+        return res.status(400).json({ 
+          message: `Kelas tidak ditemukan: ${missingClasses.join(", ")}` 
+        });
+      }
+      
+      classObjectIds = foundClasses.map(c => c._id);
+    }
+
+    // Update teacher profile with all fields
+    const profileData: any = {
+      phone: phone || "",
+      qualification: qualification || "",
+      address: address || "",
+      bio: bio || "",
+      subjects: subjectNames,
+      subjectRefs: subjectObjectIds,
+      classIds: validClassIds,
+      classes: classObjectIds,
+    };
+
     await TeacherProfileModel.findOneAndUpdate(
       { user: teacherId },
-      { phone, subjects },
-      { upsert: true }
+      profileData,
+      { upsert: true, new: true }
     );
 
-    res.json({ message: "Teacher updated successfully" });
+    res.json({ 
+      message: "Data guru berhasil diperbarui",
+      data: {
+        teacher: {
+          ...teacher.toObject(),
+          teacherProfile: profileData,
+        }
+      }
+    });
   } catch (error: any) {
     console.error("Error updating teacher:", error);
     res.status(500).json({ message: "Internal server error" });
@@ -238,5 +319,168 @@ export const deactivateTeacher = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error("Error deactivating teacher:", error);
     res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+/**
+ * Get teacher settings
+ * GET /api/teacher/settings
+ */
+export const getTeacherSettings = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized - User not authenticated",
+      });
+    }
+
+    const user = await UserModel.findById(userId).select("settings");
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      settings: user.settings || {},
+    });
+  } catch (error: any) {
+    console.error("Error fetching teacher settings:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch settings",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Update teacher settings
+ * PUT /api/teacher/settings
+ */
+export const updateTeacherSettings = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized - User not authenticated",
+      });
+    }
+
+    const { notifications, academic, privacy, sound } = req.body;
+
+    const user = await UserModel.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // Initialize settings if not exists
+    if (!user.settings) {
+      user.settings = {};
+    }
+
+    // Update settings
+    if (notifications) user.settings.notifications = { ...user.settings.notifications, ...notifications };
+    if (academic) user.settings.academic = { ...user.settings.academic, ...academic };
+    if (privacy) user.settings.privacy = { ...user.settings.privacy, ...privacy };
+    if (sound) user.settings.sound = { ...user.settings.sound, ...sound };
+    user.settings.updatedAt = new Date();
+
+    await user.save();
+
+    res.json({
+      success: true,
+      message: "Settings updated successfully",
+      settings: user.settings,
+    });
+  } catch (error: any) {
+    console.error("Error updating teacher settings:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to update settings",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Change teacher password
+ * PUT /api/teacher/profile/password
+ */
+export const changeTeacherPassword = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?._id || (req as any).user?.userId;
+    const { currentPassword, newPassword } = req.body;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "User not authenticated",
+      });
+    }
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "Current password and new password are required",
+      });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: "Password must be at least 6 characters",
+      });
+    }
+
+    // Get user with password field
+    const user = await UserModel.findById(userId).select("+password");
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // Verify current password
+    const bcryptjs = await import("bcryptjs");
+    const isPasswordValid = await bcryptjs.compare(currentPassword, (user as any).passwordHash || '');
+
+    if (!isPasswordValid) {
+      return res.status(401).json({
+        success: false,
+        message: "Current password is incorrect",
+      });
+    }
+
+    // Hash new password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    (user as any).passwordHash = hashedPassword;
+    await user.save();
+
+    res.json({
+      success: true,
+      message: "Password changed successfully",
+    });
+  } catch (error: any) {
+    console.error("Error changing password:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to change password",
+      error: error.message,
+    });
   }
 };

@@ -4,7 +4,121 @@
  */
 
 import { Request, Response } from "express";
-import SkillTreeNode from "../models/SkillTreeNode";
+import { Types } from "mongoose";
+import SkillTreeNode from "../models/SkillTreeNode.js";
+
+type AuthenticatedUser = {
+  _id?: Types.ObjectId;
+  role?: string;
+  school?: Types.ObjectId | string;
+};
+
+const slugify = (value?: string | null) => {
+  if (!value) return "general";
+  return (
+    value
+      .toString()
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)+/g, "") || "general"
+  );
+};
+
+const toNumber = (value: any) => {
+  if (value === undefined || value === null) return undefined;
+  const parsed = Number(value);
+  return Number.isNaN(parsed) ? undefined : parsed;
+};
+
+const normalizeNodePayload = (
+  rawData: any,
+  options: { partial?: boolean; user?: AuthenticatedUser } = {}
+) => {
+  const { partial = false, user } = options;
+  const normalized: Record<string, any> = {};
+  const hasValue = (val: any) => val !== undefined && val !== null;
+
+  const ensure = (key: string, val: any, fallback?: () => any) => {
+    if (hasValue(val)) {
+      normalized[key] = val;
+    } else if (!partial && fallback) {
+      normalized[key] = fallback();
+    }
+  };
+
+  const copy = (key: string, val: any) => {
+    if (hasValue(val)) normalized[key] = val;
+  };
+
+  ensure("nodeId", rawData.nodeId, () => `node-${Date.now()}`);
+  const nodeId = normalized.nodeId;
+
+  const topicCode = rawData.topicCode ?? rawData.moduleId ?? nodeId;
+  ensure("moduleId", rawData.moduleId ?? topicCode, () => nodeId);
+
+  const nameValue = rawData.name ?? rawData.title;
+  ensure("title", rawData.title ?? nameValue, () => nameValue || "Skill Tree Node");
+  copy("name", nameValue || normalized.title);
+
+  const subjectName = rawData.subject ?? rawData.categoryName;
+  const fallbackSubject = subjectName || "General";
+  ensure("categoryName", subjectName, () => fallbackSubject);
+  ensure("categoryId", rawData.categoryId, () => slugify(fallbackSubject));
+
+  ensure("description", rawData.description, () => "");
+  ensure("position", rawData.position, () => ({ x: 0, y: 0 }));
+
+  const xpReward = rawData.xpReward ?? rawData.rewards?.xp ?? rawData.xpRequired ?? 50;
+  ensure("xpReward", rawData.xpReward, () => xpReward);
+  const gemsReward = rawData.gemsReward ?? rawData.rewards?.gems ?? 5;
+  ensure("gemsReward", rawData.gemsReward ?? rawData.rewards?.gems, () => gemsReward);
+  ensure("prerequisites", rawData.prerequisites, () => []);
+  ensure("isCheckpoint", rawData.isCheckpoint, () => false);
+  ensure("difficulty", rawData.difficulty, () => "Sedang");
+
+  const estimatedDuration =
+    rawData.estimatedDuration ??
+    (hasValue(rawData.estimatedMinutes) ? `${rawData.estimatedMinutes} menit` : undefined);
+  ensure("estimatedDuration", estimatedDuration, () => "60 menit");
+
+  copy("gradeLevel", rawData.gradeLevel);
+  copy("classNumber", toNumber(rawData.classNumber));
+  copy("semester", toNumber(rawData.semester));
+  copy("curriculum", rawData.curriculum);
+  copy("kompetensiDasar", rawData.kompetensiDasar);
+  copy("topicCode", topicCode);
+  copy("icon", rawData.icon);
+  copy("color", rawData.color);
+  copy("level", toNumber(rawData.level));
+  copy("xpRequired", toNumber(rawData.xpRequired) ?? xpReward);
+  copy("quizCount", toNumber(rawData.quizCount));
+  copy("estimatedMinutes", toNumber(rawData.estimatedMinutes));
+
+  if (rawData.rewards || !partial) {
+    normalized.rewards = {
+      xp: rawData.rewards?.xp ?? xpReward,
+      gems: rawData.rewards?.gems ?? gemsReward,
+      hearts: rawData.rewards?.hearts,
+      badge: rawData.rewards?.badge,
+      certificate: rawData.rewards?.certificate,
+    };
+  }
+
+  if (!partial) {
+    normalized.isTemplate = false;
+    if (user?._id) normalized.createdBy = user._id;
+    if (user?.school) normalized.school = user.school;
+    ensure("status", rawData.status, () => "published");
+    ensure("version", rawData.version, () => "1.0");
+  } else {
+    copy("status", rawData.status);
+    copy("version", rawData.version);
+    copy("isTemplate", rawData.isTemplate);
+  }
+
+  return normalized;
+};
 
 // Define ApiResponse type locally
 interface ApiResponse {
@@ -55,12 +169,9 @@ export const createSkillTreeNode = async (req: Request, res: Response) => {
       });
     }
 
-    // Create new node
-    const newNode = new SkillTreeNode({
-      ...nodeData,
-      isTemplate: false, // Custom nodes are not templates
-      school: (req.user as any).school // Associate with teacher's school
-    });
+    const newNode = new SkillTreeNode(
+      normalizeNodePayload(nodeData, { user: req.user as AuthenticatedUser })
+    );
 
     await newNode.save();
 
@@ -119,11 +230,14 @@ export const updateSkillTreeNode = async (req: Request, res: Response) => {
       });
     }
 
-    // Prevent updating nodeId
     delete updates.nodeId;
 
-    // Update node
-    Object.assign(node, updates);
+    const normalizedUpdates = normalizeNodePayload(updates, {
+      partial: true,
+      user: req.user as AuthenticatedUser,
+    });
+
+    Object.assign(node, normalizedUpdates);
     await node.save();
 
     const response: ApiResponse = {
@@ -236,14 +350,7 @@ export const cloneSkillTreeNode = async (req: Request, res: Response) => {
     }
 
     const { nodeId } = req.params;
-    const { newNodeId, modifications } = req.body;
-
-    if (!newNodeId) {
-      return res.status(400).json({
-        success: false,
-        message: "New node ID is required"
-      });
-    }
+    const { newNodeId, modifications } = req.body || {};
 
     const originalNode = await SkillTreeNode.findOne({ nodeId });
 
@@ -254,13 +361,14 @@ export const cloneSkillTreeNode = async (req: Request, res: Response) => {
       });
     }
 
-    // Check if new ID already exists
-    const existing = await SkillTreeNode.findOne({ nodeId: newNodeId });
-    if (existing) {
-      return res.status(400).json({
-        success: false,
-        message: "New node ID already exists"
-      });
+    // Determine new node ID (generate fallback when not provided)
+    let targetNodeId = newNodeId || `${nodeId}-copy-${Date.now()}`;
+
+    // Ensure uniqueness even with generated ID
+    let suffix = 1;
+    // eslint-disable-next-line no-await-in-loop
+    while (await SkillTreeNode.findOne({ nodeId: targetNodeId })) {
+      targetNodeId = `${nodeId}-copy-${Date.now()}-${suffix++}`;
     }
 
     // Clone node
@@ -269,15 +377,21 @@ export const cloneSkillTreeNode = async (req: Request, res: Response) => {
     // @ts-ignore - __v is optional
     delete clonedData.__v;
 
-    const newNode = new SkillTreeNode({
-      ...clonedData,
-      nodeId: newNodeId,
-      // @ts-ignore - node.name exists
-      name: modifications?.name || `${originalNode.name} (Copy)`,
-      isTemplate: false,
-      school: (req.user as any).school,
-      ...modifications
-    });
+    delete clonedData.createdAt;
+    delete clonedData.updatedAt;
+
+    const normalizedClone = normalizeNodePayload(
+      {
+        ...clonedData,
+        ...(modifications || {}),
+        nodeId: targetNodeId,
+        // @ts-ignore - name exists in schema
+        name: modifications?.name || `${originalNode.name} (Copy)`,
+      },
+      { user: req.user as AuthenticatedUser }
+    );
+
+    const newNode = new SkillTreeNode(normalizedClone);
 
     await newNode.save();
 
@@ -316,7 +430,13 @@ export const bulkImportNodes = async (req: Request, res: Response) => {
       });
     }
 
-    const { nodes, replaceExisting } = req.body;
+    const { nodes, replaceExisting, replace } = req.body;
+    const shouldReplace =
+      typeof replaceExisting === "boolean"
+        ? replaceExisting
+        : typeof replace === "boolean"
+          ? replace
+          : false;
 
     if (!Array.isArray(nodes) || nodes.length === 0) {
       return res.status(400).json({
@@ -325,13 +445,17 @@ export const bulkImportNodes = async (req: Request, res: Response) => {
       });
     }
 
-    if (replaceExisting) {
+    if (shouldReplace) {
       // Clear existing nodes with same IDs
       const nodeIds = nodes.map(n => n.nodeId);
       await SkillTreeNode.deleteMany({ nodeId: { $in: nodeIds } });
     }
 
-    const result = await SkillTreeNode.insertMany(nodes, { ordered: false });
+    const normalizedNodes = nodes.map(node =>
+      normalizeNodePayload(node, { user: req.user as AuthenticatedUser })
+    );
+
+    const result = await SkillTreeNode.insertMany(normalizedNodes, { ordered: false });
 
     const response: ApiResponse = {
       success: true,

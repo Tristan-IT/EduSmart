@@ -17,26 +17,47 @@ import StudentProfileModel from "../models/StudentProfile.js";
  */
 export async function getGamificationProfile(req: Request, res: Response) {
   try {
-    const userId = (req as any).user._id;
+    const userId = (req as any).user?._id || (req as any).user?.userId;
 
-    const profile = await StudentProfileModel.findOne({ user: userId }).populate("user");
-
-    if (!profile) {
-      return res.status(404).json({
+    if (!userId) {
+      return res.status(401).json({
         success: false,
-        message: "Profile not found",
+        message: "User not authenticated",
       });
     }
 
-    // Get gem balance
-    const gemBalance = await getGemBalance(userId);
+    // Try to get from StudentProfile first (old system)
+    let profile = await StudentProfileModel.findOne({ user: userId }).populate("user");
+
+    if (profile) {
+      const gemBalance = await getGemBalance(userId);
+      return res.json({
+        success: true,
+        profile: {
+          ...profile.toObject(),
+          gems: gemBalance,
+        },
+      });
+    }
+
+    // Fallback to User model directly (new system)
+    const UserModel = (await import("../models/User.js")).default;
+    const user = await UserModel.findById(userId).select("xp level gems hearts");
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
 
     return res.json({
       success: true,
-      profile: {
-        ...profile.toObject(),
-        gems: gemBalance,
-      },
+      xp: user.xp || 0,
+      level: user.level || 1,
+      gems: user.gems || 0,
+      hearts: user.hearts || 5,
+      streak: 0, // TODO: Implement streak tracking
     });
   } catch (error) {
     console.error("Error getting gamification profile:", error);
@@ -219,6 +240,91 @@ export async function checkAchievementsController(req: Request, res: Response) {
     return res.status(500).json({
       success: false,
       message: "Failed to check achievements",
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+/**
+ * Get global leaderboard
+ * GET /api/gamification/leaderboard
+ * Query params: league, limit
+ */
+export async function getLeaderboard(req: Request, res: Response) {
+  try {
+    const userId = (req as any).user?.id || (req as any).user?._id;
+    const { league, limit = 50 } = req.query;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "User not authenticated",
+      });
+    }
+
+    const UserModel = (await import("../models/User.js")).default;
+
+    // Get current user's info
+    const currentUser = await UserModel.findById(userId)
+      .select("name email school xp level streak bestStreak league weeklyXP")
+      .lean();
+
+    if (!currentUser) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // Build query filter
+    const filter: any = { school: currentUser.school, role: "student" };
+    if (league) {
+      filter.league = league;
+    }
+
+    // Get leaderboard - sorted by total XP or weeklyXP depending on context
+    const sortField = league ? { weeklyXP: -1 } : { xp: -1 };
+    const leaderboard = await UserModel.find(filter)
+      .select("name email xp level streak bestStreak league weeklyXP avatar")
+      .sort(sortField)
+      .limit(parseInt(limit as string))
+      .lean();
+
+    // Add rank and format data
+    const formattedLeaderboard = leaderboard.map((user, index) => ({
+      studentId: user._id.toString(),
+      name: user.name,
+      rank: index + 1,
+      xp: user.xp || 0,
+      weeklyXP: user.weeklyXP || 0,
+      level: user.level || 1,
+      streak: user.streak || 0,
+      bestStreak: user.bestStreak || 0,
+      league: user.league || 'bronze',
+      avatar: user.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user._id}`,
+    }));
+
+    // Find current user's rank
+    const currentUserRank = formattedLeaderboard.findIndex(
+      (entry) => entry.studentId === userId.toString()
+    ) + 1;
+
+    return res.json({
+      success: true,
+      data: {
+        leaderboard: formattedLeaderboard,
+        currentUser: {
+          ...currentUser,
+          _id: currentUser._id.toString(),
+          rank: currentUserRank || null,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Error getting leaderboard:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to get leaderboard",
       error: error instanceof Error ? error.message : String(error),
     });
   }

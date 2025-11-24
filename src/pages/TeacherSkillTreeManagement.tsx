@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -28,8 +29,10 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { AlertMessage } from "@/components/AlertMessage";
-import { Plus, Edit, Trash2, Copy, Upload, Search, Filter } from "lucide-react";
+import { Plus, Edit, Trash2, Copy, Upload, Search, Filter, Network } from "lucide-react";
 import { apiClient } from "@/lib/apiClient";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { AppSidebar } from "@/components/AppSidebar";
 
 interface SkillTreeNode {
   _id?: string;
@@ -115,6 +118,15 @@ export default function TeacherSkillTreeManagement() {
   });
   const [searchTerm, setSearchTerm] = useState("");
 
+  const extractNodes = (payload: any): SkillTreeNode[] => {
+    if (Array.isArray(payload)) return payload;
+    if (Array.isArray(payload?.nodes)) return payload.nodes;
+    if (Array.isArray(payload?.data?.nodes)) return payload.data.nodes;
+    if (Array.isArray(payload?.data)) return payload.data;
+    if (Array.isArray(payload?.skillTree)) return payload.skillTree;
+    return [];
+  };
+
   useEffect(() => {
     fetchNodes();
   }, []);
@@ -126,9 +138,8 @@ export default function TeacherSkillTreeManagement() {
   const fetchNodes = async () => {
     try {
       setLoading(true);
-      const response = await apiClient.get("/api/skill-tree");
-      // @ts-ignore - API response type
-      setNodes(response.data || []);
+      const response = await apiClient.get("/skill-tree");
+      setNodes(extractNodes(response));
       setError(null);
     } catch (err: any) {
       setError(err.response?.data?.message || "Failed to fetch skill tree nodes");
@@ -182,7 +193,7 @@ export default function TeacherSkillTreeManagement() {
 
   const handleCreate = async () => {
     try {
-      await apiClient.post("/api/teacher/skill-tree", currentNode);
+      await apiClient.post("/teacher/skill-tree", currentNode);
       setSuccess("Node created successfully!");
       setIsCreateDialogOpen(false);
       setCurrentNode(emptyNode);
@@ -195,7 +206,7 @@ export default function TeacherSkillTreeManagement() {
   const handleUpdate = async () => {
     try {
       if (!currentNode.nodeId) return;
-      await apiClient.put(`/api/teacher/skill-tree/${currentNode.nodeId}`, currentNode);
+      await apiClient.put(`/teacher/skill-tree/${currentNode.nodeId}`, currentNode);
       setSuccess("Node updated successfully!");
       setIsEditDialogOpen(false);
       setCurrentNode(emptyNode);
@@ -208,7 +219,7 @@ export default function TeacherSkillTreeManagement() {
   const handleDelete = async () => {
     try {
       if (!deleteNodeId) return;
-      await apiClient.delete(`/api/teacher/skill-tree/${deleteNodeId}`);
+      await apiClient.delete(`/teacher/skill-tree/${deleteNodeId}`);
       setSuccess("Node deleted successfully!");
       setIsDeleteDialogOpen(false);
       setDeleteNodeId(null);
@@ -220,7 +231,7 @@ export default function TeacherSkillTreeManagement() {
 
   const handleClone = async (nodeId: string) => {
     try {
-      const response = await apiClient.post(`/api/teacher/skill-tree/${nodeId}/clone`);
+      const response = await apiClient.post(`/teacher/skill-tree/${nodeId}/clone`);
       setSuccess("Node cloned successfully!");
       fetchNodes();
     } catch (err: any) {
@@ -231,7 +242,7 @@ export default function TeacherSkillTreeManagement() {
   const handleBulkImport = async () => {
     try {
       const jsonData = JSON.parse(bulkImportData);
-      await apiClient.post("/api/teacher/skill-tree/bulk-import", {
+      await apiClient.post("/teacher/skill-tree/bulk-import", {
         nodes: Array.isArray(jsonData) ? jsonData : [jsonData],
         replace: false,
       });
@@ -264,26 +275,47 @@ export default function TeacherSkillTreeManagement() {
   };
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Skill Tree Management</h1>
-          <p className="text-muted-foreground">
+    <SidebarProvider>
+      <AppSidebar role="teacher" />
+      <main className="flex-1 w-full">
+        {/* Header */}
+        <motion.div 
+          className="sticky top-0 z-10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b"
+          initial={{ y: -20, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ duration: 0.3 }}
+        >
+          <div className="flex h-16 items-center gap-4 px-6">
+            <SidebarTrigger />
+            <div className="flex items-center gap-3 flex-1">
+              <Network className="h-5 w-5 text-primary" />
+              <h1 className="text-xl font-semibold bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
+                Skill Tree Management
+              </h1>
+            </div>
+            <div className="flex gap-2">
+              <Button onClick={() => setIsBulkImportDialogOpen(true)} variant="outline">
+                <Upload className="w-4 h-4 mr-2" />
+                Bulk Import
+              </Button>
+              <Button onClick={() => setIsCreateDialogOpen(true)}>
+                <Plus className="w-4 h-4 mr-2" />
+                Create Node
+              </Button>
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Main Content */}
+        <div className="container mx-auto px-6 py-8 max-w-7xl space-y-6">
+          <motion.p
+            className="text-muted-foreground"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}
+          >
             Manage skill tree nodes for your school
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button onClick={() => setIsBulkImportDialogOpen(true)} variant="outline">
-            <Upload className="w-4 h-4 mr-2" />
-            Bulk Import
-          </Button>
-          <Button onClick={() => setIsCreateDialogOpen(true)}>
-            <Plus className="w-4 h-4 mr-2" />
-            Create Node
-          </Button>
-        </div>
-      </div>
+          </motion.p>
 
       {/* Alerts */}
       {error && (
@@ -789,6 +821,8 @@ export default function TeacherSkillTreeManagement() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+        </div>
+      </main>
+    </SidebarProvider>
   );
 }

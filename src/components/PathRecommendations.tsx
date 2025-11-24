@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
+import { apiClient } from '@/lib/apiClient';
 
 interface RecommendedNode {
   _id: string;
@@ -57,18 +58,30 @@ export const PathRecommendations: React.FC = () => {
   const fetchRecommendations = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/progress/skill-tree/recommendations', {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
+      const response = await apiClient.get<{
+        success?: boolean;
+        recommendations?: RecommendedNode[];
+        insights?: string[];
+        userStats?: RecommendationsData['userStats'];
+        data?: RecommendationsData;
+      }>("/progress/skill-tree/recommendations");
+
+      const payload = (response as any)?.data ?? response;
+
+      setData({
+        recommendations: payload.recommendations ?? [],
+        insights: payload.insights ?? [],
+        userStats:
+          payload.userStats ?? {
+            level: 1,
+            xp: 0,
+            completedNodes: 0,
+            currentStreak: 0,
+            strongSubjects: [],
+            preferredDifficulty: "beginner",
+          },
       });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch recommendations');
-      }
-
-      const result = await response.json();
-      setData(result);
+      setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {

@@ -240,6 +240,70 @@ export const getItems = async (req: Request, res: Response) => {
   }
 };
 
+/**
+ * Update a content item
+ * PUT /api/content/items/:id
+ */
+export const updateItem = async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    if (!user || user.role !== "teacher") {
+      return res.status(403).json({ message: "Only teachers can update content items" });
+    }
+
+    const { id } = req.params;
+    const { title, topic, type, difficulty, durationMinutes, author, tags } = req.body;
+
+    const contentItem = await ContentItemModel.findByIdAndUpdate(
+      id,
+      { title, topic, type, difficulty, durationMinutes, author, tags },
+      { new: true, runValidators: true }
+    ).populate("subject", "code name category color");
+
+    if (!contentItem) {
+      return res.status(404).json({ message: "Content item not found" });
+    }
+
+    return res.json({
+      success: true,
+      message: "Content item updated successfully",
+      item: contentItem,
+    });
+  } catch (error: any) {
+    console.error("Error updating content item:", error);
+    return res.status(500).json({ message: error.message || "Failed to update content item" });
+  }
+};
+
+/**
+ * Delete a content item
+ * DELETE /api/content/items/:id
+ */
+export const deleteItem = async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    if (!user || user.role !== "teacher") {
+      return res.status(403).json({ message: "Only teachers can delete content items" });
+    }
+
+    const { id } = req.params;
+
+    const contentItem = await ContentItemModel.findByIdAndDelete(id);
+
+    if (!contentItem) {
+      return res.status(404).json({ message: "Content item not found" });
+    }
+
+    return res.json({
+      success: true,
+      message: "Content item deleted successfully",
+    });
+  } catch (error: any) {
+    console.error("Error deleting content item:", error);
+    return res.status(500).json({ message: error.message || "Failed to delete content item" });
+  }
+};
+
 // ==================== QUIZ QUESTIONS ====================
 
 /**
@@ -333,6 +397,8 @@ import ContentTemplate from '../models/ContentTemplate.js';
 import ContentVersion from '../models/ContentVersion.js';
 import { ContentAuditLogModel } from '../models/ContentVersion.js';
 import QuizQuestion from '../models/QuizQuestion.js';
+import SubjectModel from "../models/Subject.js";
+import { ensureTemplateContentForSubject, ensureTemplateContentForSubjects } from "../services/topicTemplateService.js";
 
 /**
  * GET /api/topics
@@ -365,11 +431,31 @@ export const listTopics = async (req: Request, res: Response) => {
       ];
     }
 
+    if (subject) {
+      const subjectDoc = await SubjectModel.findById(subject).select("_id code grades schoolTypes school");
+      if (subjectDoc) {
+        console.log(`[listTopics] Ensuring template content for subject: ${subjectDoc.code}`);
+        await ensureTemplateContentForSubject(subjectDoc as any);
+        console.log(`[listTopics] Template content ensured for subject: ${subjectDoc.code}`);
+      } else {
+        console.warn(`[listTopics] Subject not found: ${subject}`);
+      }
+    } else if (school) {
+      const schoolSubjects = await SubjectModel.find({ school }).select("_id code grades schoolTypes school");
+      if (schoolSubjects.length) {
+        console.log(`[listTopics] Ensuring template content for ${schoolSubjects.length} subjects in school: ${school}`);
+        await ensureTemplateContentForSubjects(schoolSubjects as any);
+        console.log(`[listTopics] Template content ensured for all subjects`);
+      }
+    }
+
     const topics = await Topic.find(filter)
       .populate('subject', 'name code icon')
       .populate('school', 'name')
       .populate('prerequisites', 'name topicCode')
       .sort({ order: 1 });
+
+    console.log(`[listTopics] Found ${topics.length} topics for filter:`, JSON.stringify(filter));
 
     res.json({
       success: true,

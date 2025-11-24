@@ -8,7 +8,7 @@ export const RecommendationsPage: React.FC = () => {
   return (
     <SidebarProvider>
       <div className="flex h-screen w-full overflow-hidden bg-gray-50">
-        <AppSidebar />
+        <AppSidebar role="student" />
         <div className="flex-1 flex flex-col overflow-hidden">
           <Topbar />
           <main className="flex-1 overflow-y-auto">

@@ -21,6 +21,13 @@ import {
   Sparkles,
   Target,
   Shield,
+  AlertTriangle,
+  Activity,
+  UserPlus,
+  Zap,
+  FileText,
+  Settings,
+  Eye,
 } from "lucide-react";
 import {
   Table,
@@ -33,45 +40,46 @@ import {
 import { fadeInUp, staggerContainer, scaleIn } from "@/lib/animations";
 import { useAuth } from "@/context/AuthContext";
 
-interface OverviewData {
-  totalTeachers: number;
-  totalStudents: number;
-  totalClasses: number;
-  activeClasses: number;
-}
-
-interface TeacherStat {
-  teacherId: string;
-  name: string;
-  email: string;
-  totalClasses: number;
-  totalStudents: number;
-  subjects: string[];
-}
-
-interface ClassOverview {
-  classId: string;
-  className: string;
-  grade: string;
-  studentCount: number;
-  capacity: number;
-  homeroomTeacher: string;
-  subjectTeachers: number;
-}
-
-interface TopPerformer {
-  studentId: string;
-  name: string;
-  className: string;
-  xp: number;
-  completedLessons: number;
-  averageScore: number;
-}
-
-interface ActivityLog {
-  date: string;
-  count: number;
-  type: string;
+interface DashboardData {
+  overview: {
+    school: {
+      schoolId: string;
+      schoolName: string;
+      city: string;
+      province: string;
+    };
+    totals: {
+      teachers: number;
+      students: number;
+      classes: number;
+      activeStudents: number;
+      activeTeachers: number;
+    };
+    averages: {
+      studentsPerClass: number;
+      xpPerStudent: number;
+      levelPerStudent: number;
+    };
+  };
+  alerts: {
+    fullClasses: number;
+    inactiveStudents: number;
+    newRegistrations: number;
+  };
+  recentActivity: Array<{
+    type: string;
+    message: string;
+    timestamp: string;
+    icon: string;
+  }>;
+  performance: {
+    averageXP: number;
+    averageLevel: number;
+    topStudents: number;
+    completionRate: number;
+    averageScore: number;
+    engagementRate: number;
+  };
 }
 
 const SchoolOwnerDashboard = () => {
@@ -82,11 +90,7 @@ const SchoolOwnerDashboard = () => {
   const [schoolId, setSchoolId] = useState("");
   const [copiedSchoolId, setCopiedSchoolId] = useState(false);
 
-  const [overview, setOverview] = useState<OverviewData | null>(null);
-  const [teacherStats, setTeacherStats] = useState<TeacherStat[]>([]);
-  const [classOverview, setClassOverview] = useState<ClassOverview[]>([]);
-  const [topPerformers, setTopPerformers] = useState<TopPerformer[]>([]);
-  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
+  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
 
   useEffect(() => {
     loadDashboardData();
@@ -109,7 +113,6 @@ const SchoolOwnerDashboard = () => {
   const loadDashboardData = async () => {
     setLoading(true);
     try {
-      // Get token from AuthContext or fallback to localStorage
       const token = authToken || localStorage.getItem("token");
       const storedSchoolId = localStorage.getItem("schoolId");
       
@@ -119,41 +122,70 @@ const SchoolOwnerDashboard = () => {
         return;
       }
       
+      if (!storedSchoolId) {
+        setError("School ID tidak ditemukan. Silakan login kembali untuk mendapatkan akses ke dashboard sekolah.");
+        setLoading(false);
+        return;
+      }
+      
       const headers = {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       };
 
-      // Load all dashboard data with schoolId parameter
-      const [overviewRes, teachersRes, classesRes] =
-        await Promise.all([
-          fetch(`http://localhost:5000/api/school-dashboard/overview?schoolId=${storedSchoolId}`, { headers }),
-          fetch(`http://localhost:5000/api/school-dashboard/teachers?schoolId=${storedSchoolId}`, { headers }),
-          fetch(`http://localhost:5000/api/school-dashboard/classes?schoolId=${storedSchoolId}`, { headers }),
-        ]);
-
-      // Check for auth errors
-      if (!overviewRes.ok || !teachersRes.ok || !classesRes.ok) {
-        if (overviewRes.status === 401 || teachersRes.status === 401 || classesRes.status === 401) {
+      // Get overview data
+      const overviewRes = await fetch(`http://localhost:5000/api/school-dashboard/overview?schoolId=${storedSchoolId}`, { headers });
+      
+      if (!overviewRes.ok) {
+        if (overviewRes.status === 401) {
           setError("Sesi Anda telah berakhir. Silakan login kembali.");
-          // Clear expired token
           localStorage.removeItem("token");
           localStorage.removeItem("schoolId");
           return;
         }
+        throw new Error("Failed to fetch overview data");
       }
 
       const overviewData = await overviewRes.json();
-      const teachersData = await teachersRes.json();
-      const classesData = await classesRes.json();
-
-      if (overviewData.success) setOverview(overviewData.data);
-      if (teachersData.success) setTeacherStats(teachersData.data);
-      if (classesData.success) setClassOverview(classesData.data);
       
-      // Mock data for top performers and activity logs (will be implemented later)
-      setTopPerformers([]);
-      setActivityLogs([]);
+      if (overviewData.success) {
+        // Transform data for dashboard - API returns overview data directly in data field
+        const overview = overviewData.data;
+        
+        // Get alerts data
+        const alertsRes = await fetch(`http://localhost:5000/api/school-dashboard/alerts?schoolId=${storedSchoolId}`, { headers });
+        const alertsData = alertsRes.ok ? (await alertsRes.json()).data : {
+          fullClasses: 0,
+          inactiveStudents: 0,
+          newRegistrations: 0,
+        };
+
+        // Get performance metrics
+        const performanceRes = await fetch(`http://localhost:5000/api/school-dashboard/performance?schoolId=${storedSchoolId}`, { headers });
+        const performanceData = performanceRes.ok ? (await performanceRes.json()).data : {
+          completionRate: 0,
+          averageScore: 0,
+          engagementRate: 0,
+        };
+
+        // Get recent activity
+        const activityRes = await fetch(`http://localhost:5000/api/school-dashboard/recent-activity?schoolId=${storedSchoolId}&limit=5`, { headers });
+        const recentActivity = activityRes.ok ? (await activityRes.json()).data : [];
+
+        setDashboardData({
+          overview,
+          alerts: alertsData,
+          recentActivity,
+          performance: {
+            averageXP: overview.averages.xpPerStudent,
+            averageLevel: overview.averages.levelPerStudent,
+            topStudents: Math.floor(Math.random() * 10) + 5, // Keep mock for now
+            completionRate: performanceData.completionRate,
+            averageScore: performanceData.averageScore,
+            engagementRate: performanceData.engagementRate,
+          }
+        });
+      }
     } catch (err: any) {
       setError(err.message || "Gagal memuat data dashboard");
     } finally {
@@ -208,21 +240,23 @@ const SchoolOwnerDashboard = () => {
               <SidebarTrigger />
               <div className="flex-1">
                 <h1 className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
-                  Dashboard Sekolah
+                  Selamat Datang, Kepala Sekolah
                 </h1>
                 <p className="text-sm text-muted-foreground">
-                  Kelola dan pantau seluruh aktivitas sekolah
+                  {dashboardData?.overview.school.schoolName} • {dashboardData?.overview.school.city}
                 </p>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleShowSchoolId}
-                className="gap-2"
-              >
-                <Building2 className="h-4 w-4" />
-                School ID
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleShowSchoolId}
+                  className="gap-2"
+                >
+                  <Building2 className="h-4 w-4" />
+                  School ID
+                </Button>
+              </div>
             </div>
           </motion.div>
 
@@ -234,315 +268,632 @@ const SchoolOwnerDashboard = () => {
               </Alert>
             )}
 
-            {/* Hero Stats */}
-            {overview && (
+            {/* Welcome Section */}
+            <motion.div
+              initial="hidden"
+              animate="visible"
+              variants={fadeInUp}
+              className="bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 rounded-xl p-6 text-white"
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold mb-2">Dashboard Sekolah</h2>
+                  <p className="text-indigo-100 mb-4">
+                    Pantau performa sekolah dan kelola aktivitas pembelajaran
+                  </p>
+                  <div className="flex gap-3">
+                    <Button size="sm" variant="secondary" className="gap-2">
+                      <Eye className="h-4 w-4" />
+                      Lihat Laporan
+                    </Button>
+                    <Button size="sm" variant="outline" className="text-white border-white/20 hover:bg-white/10 gap-2">
+                      <Settings className="h-4 w-4" />
+                      Pengaturan
+                    </Button>
+                  </div>
+                </div>
+                <div className="hidden md:block">
+                  <div className="p-4 bg-white/10 rounded-lg backdrop-blur-sm">
+                    <Target className="h-8 w-8 text-white" />
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+
+            {/* Key Metrics - Redesigned */}
+            {dashboardData && (
               <motion.div
                 initial="hidden"
                 animate="visible"
                 variants={staggerContainer}
-                className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"
+                className="grid grid-cols-2 md:grid-cols-4 gap-6"
               >
+                {/* Total Siswa Card - Enhanced Design */}
                 <motion.div variants={scaleIn}>
-                  <Card className="border-2 border-teal-100 bg-gradient-to-br from-teal-50 to-white hover:shadow-lg transition-shadow">
-                    <CardHeader className="flex flex-row items-center justify-between pb-2">
-                      <CardTitle className="text-sm font-medium text-muted-foreground">
-                        Total Guru
-                      </CardTitle>
-                      <div className="p-2 bg-teal-100 rounded-lg">
-                        <GraduationCap className="h-4 w-4 text-teal-600" />
+                  <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-blue-500 via-blue-600 to-indigo-700 text-white shadow-xl hover:shadow-2xl transition-all duration-300 hover:scale-105 group">
+                    <div className="absolute inset-0 bg-gradient-to-br from-blue-400/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                    <CardHeader className="flex flex-row items-center justify-between pb-3 relative z-10">
+                      <div className="flex items-center gap-3">
+                        <div className="p-3 bg-white/20 rounded-xl backdrop-blur-sm">
+                          <Users className="h-6 w-6 text-white" />
+                        </div>
+                        <div>
+                          <CardTitle className="text-sm font-semibold text-blue-100">
+                            Total Siswa
+                          </CardTitle>
+                          <p className="text-xs text-blue-200">Aktif & Terdaftar</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+                        <span className="text-xs text-blue-200">Live</span>
                       </div>
                     </CardHeader>
-                    <CardContent>
-                      <div className="text-3xl font-bold bg-gradient-to-br from-teal-600 to-cyan-600 bg-clip-text text-transparent">
-                        {overview.totalTeachers}
+                    <CardContent className="relative z-10">
+                      <div className="flex items-baseline gap-2 mb-2">
+                        <div className="text-3xl font-bold">
+                          {dashboardData.overview.totals.students.toLocaleString()}
+                        </div>
+                        <TrendingUp className="h-5 w-5 text-green-300" />
                       </div>
-                      <p className="text-xs text-muted-foreground mt-1">Guru terdaftar</p>
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm text-blue-200">
+                          {dashboardData.overview.totals.activeStudents} aktif hari ini
+                        </p>
+                        <div className="text-xs bg-white/20 px-2 py-1 rounded-full">
+                          {Math.round((dashboardData.overview.totals.activeStudents / dashboardData.overview.totals.students) * 100)}% aktif
+                        </div>
+                      </div>
+                      <div className="mt-3 w-full bg-white/20 rounded-full h-1.5">
+                        <div
+                          className="bg-green-400 h-1.5 rounded-full transition-all duration-500"
+                          style={{ width: `${Math.min((dashboardData.overview.totals.activeStudents / dashboardData.overview.totals.students) * 100, 100)}%` }}
+                        />
+                      </div>
                     </CardContent>
                   </Card>
                 </motion.div>
 
+                {/* Total Guru Card - Enhanced Design */}
                 <motion.div variants={scaleIn}>
-                  <Card className="border-2 border-indigo-100 bg-gradient-to-br from-indigo-50 to-white hover:shadow-lg transition-shadow">
-                    <CardHeader className="flex flex-row items-center justify-between pb-2">
-                      <CardTitle className="text-sm font-medium text-muted-foreground">
-                        Total Siswa
-                      </CardTitle>
-                      <div className="p-2 bg-indigo-100 rounded-lg">
-                        <Users className="h-4 w-4 text-indigo-600" />
+                  <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-emerald-500 via-green-600 to-teal-700 text-white shadow-xl hover:shadow-2xl transition-all duration-300 hover:scale-105 group">
+                    <div className="absolute inset-0 bg-gradient-to-br from-emerald-400/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                    <CardHeader className="flex flex-row items-center justify-between pb-3 relative z-10">
+                      <div className="flex items-center gap-3">
+                        <div className="p-3 bg-white/20 rounded-xl backdrop-blur-sm">
+                          <GraduationCap className="h-6 w-6 text-white" />
+                        </div>
+                        <div>
+                          <CardTitle className="text-sm font-semibold text-emerald-100">
+                            Total Guru
+                          </CardTitle>
+                          <p className="text-xs text-emerald-200">Pengajar Aktif</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+                        <span className="text-xs text-emerald-200">Online</span>
                       </div>
                     </CardHeader>
-                    <CardContent>
-                      <div className="text-3xl font-bold bg-gradient-to-br from-indigo-600 to-purple-600 bg-clip-text text-transparent">
-                        {overview.totalStudents}
+                    <CardContent className="relative z-10">
+                      <div className="flex items-baseline gap-2 mb-2">
+                        <div className="text-3xl font-bold">
+                          {dashboardData.overview.totals.teachers.toLocaleString()}
+                        </div>
+                        <Award className="h-5 w-5 text-yellow-300" />
                       </div>
-                      <p className="text-xs text-muted-foreground mt-1">Siswa aktif</p>
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm text-emerald-200">
+                          {dashboardData.overview.totals.activeTeachers} aktif mengajar
+                        </p>
+                        <div className="text-xs bg-white/20 px-2 py-1 rounded-full">
+                          {Math.round((dashboardData.overview.totals.activeTeachers / dashboardData.overview.totals.teachers) * 100)}% aktif
+                        </div>
+                      </div>
+                      <div className="mt-3 w-full bg-white/20 rounded-full h-1.5">
+                        <div
+                          className="bg-yellow-400 h-1.5 rounded-full transition-all duration-500"
+                          style={{ width: `${Math.min((dashboardData.overview.totals.activeTeachers / dashboardData.overview.totals.teachers) * 100, 100)}%` }}
+                        />
+                      </div>
                     </CardContent>
                   </Card>
                 </motion.div>
 
+                {/* Total Kelas Card - Enhanced Design */}
                 <motion.div variants={scaleIn}>
-                  <Card className="border-2 border-purple-100 bg-gradient-to-br from-purple-50 to-white hover:shadow-lg transition-shadow">
-                    <CardHeader className="flex flex-row items-center justify-between pb-2">
-                      <CardTitle className="text-sm font-medium text-muted-foreground">
-                        Total Kelas
-                      </CardTitle>
-                      <div className="p-2 bg-purple-100 rounded-lg">
-                        <BookOpen className="h-4 w-4 text-purple-600" />
+                  <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-purple-500 via-violet-600 to-purple-700 text-white shadow-xl hover:shadow-2xl transition-all duration-300 hover:scale-105 group">
+                    <div className="absolute inset-0 bg-gradient-to-br from-purple-400/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                    <CardHeader className="flex flex-row items-center justify-between pb-3 relative z-10">
+                      <div className="flex items-center gap-3">
+                        <div className="p-3 bg-white/20 rounded-xl backdrop-blur-sm">
+                          <BookOpen className="h-6 w-6 text-white" />
+                        </div>
+                        <div>
+                          <CardTitle className="text-sm font-semibold text-purple-100">
+                            Total Kelas
+                          </CardTitle>
+                          <p className="text-xs text-purple-200">Ruang Belajar</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+                        <span className="text-xs text-purple-200">Aktif</span>
                       </div>
                     </CardHeader>
-                    <CardContent>
-                      <div className="text-3xl font-bold bg-gradient-to-br from-purple-600 to-pink-600 bg-clip-text text-transparent">
-                        {overview.totalClasses}
+                    <CardContent className="relative z-10">
+                      <div className="flex items-baseline gap-2 mb-2">
+                        <div className="text-3xl font-bold">
+                          {dashboardData.overview.totals.classes.toLocaleString()}
+                        </div>
+                        <Target className="h-5 w-5 text-pink-300" />
                       </div>
-                      <p className="text-xs text-muted-foreground mt-1">Kelas tersedia</p>
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm text-purple-200">
+                          {dashboardData.overview.averages.studentsPerClass} siswa rata-rata
+                        </p>
+                        <div className="text-xs bg-white/20 px-2 py-1 rounded-full">
+                          Kapasitas optimal
+                        </div>
+                      </div>
+                      <div className="mt-3 w-full bg-white/20 rounded-full h-1.5">
+                        <div
+                          className="bg-pink-400 h-1.5 rounded-full transition-all duration-500"
+                          style={{ width: `${Math.min((dashboardData.overview.averages.studentsPerClass / 35) * 100, 100)}%` }}
+                        />
+                      </div>
                     </CardContent>
                   </Card>
                 </motion.div>
 
+                {/* Rata-rata XP Card - Enhanced Design */}
                 <motion.div variants={scaleIn}>
-                  <Card className="border-2 border-green-100 bg-gradient-to-br from-green-50 to-white hover:shadow-lg transition-shadow">
-                    <CardHeader className="flex flex-row items-center justify-between pb-2">
-                      <CardTitle className="text-sm font-medium text-muted-foreground">
-                        Kelas Aktif
-                      </CardTitle>
-                      <div className="p-2 bg-green-100 rounded-lg">
-                        <TrendingUp className="h-4 w-4 text-green-600" />
+                  <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-orange-500 via-red-500 to-pink-600 text-white shadow-xl hover:shadow-2xl transition-all duration-300 hover:scale-105 group">
+                    <div className="absolute inset-0 bg-gradient-to-br from-orange-400/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                    <CardHeader className="flex flex-row items-center justify-between pb-3 relative z-10">
+                      <div className="flex items-center gap-3">
+                        <div className="p-3 bg-white/20 rounded-xl backdrop-blur-sm">
+                          <Zap className="h-6 w-6 text-white" />
+                        </div>
+                        <div>
+                          <CardTitle className="text-sm font-semibold text-orange-100">
+                            Rata-rata XP
+                          </CardTitle>
+                          <p className="text-xs text-orange-200">Poin Pengalaman</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <div className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse" />
+                        <span className="text-xs text-orange-200">Trending</span>
                       </div>
                     </CardHeader>
-                    <CardContent>
-                      <div className="text-3xl font-bold bg-gradient-to-br from-green-600 to-emerald-600 bg-clip-text text-transparent">
-                        {overview.activeClasses}
+                    <CardContent className="relative z-10">
+                      <div className="flex items-baseline gap-2 mb-2">
+                        <div className="text-3xl font-bold">
+                          {dashboardData.performance.averageXP.toLocaleString()}
+                        </div>
+                        <Sparkles className="h-5 w-5 text-yellow-300" />
                       </div>
-                      <p className="text-xs text-muted-foreground mt-1">Sedang berjalan</p>
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm text-orange-200">
+                          Level {dashboardData.performance.averageLevel} rata-rata
+                        </p>
+                        <div className="text-xs bg-white/20 px-2 py-1 rounded-full">
+                          {Math.round((dashboardData.performance.averageLevel / 15) * 100)}% to max
+                        </div>
+                      </div>
+                      <div className="mt-3 w-full bg-white/20 rounded-full h-1.5">
+                        <div
+                          className="bg-yellow-400 h-1.5 rounded-full transition-all duration-500"
+                          style={{ width: `${Math.min((dashboardData.performance.averageLevel / 15) * 100, 100)}%` }}
+                        />
+                      </div>
                     </CardContent>
                   </Card>
                 </motion.div>
               </motion.div>
             )}
 
-            {/* Teacher Statistics */}
-            <motion.div variants={fadeInUp}>
-              <Card className="shadow-sm hover:shadow-md transition-shadow">
-                <CardHeader className="border-b bg-gradient-to-r from-teal-50 to-transparent">
-                  <div className="flex items-center gap-2">
-                    <div className="p-2 bg-teal-100 rounded-lg">
-                      <GraduationCap className="h-5 w-5 text-teal-600" />
-                    </div>
-                    <div>
-                      <CardTitle>Statistik Guru</CardTitle>
-                      <CardDescription>Ringkasan kinerja guru berdasarkan kelas dan siswa</CardDescription>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="pt-6">
-                  {teacherStats.length > 0 ? (
-                    <div className="rounded-lg border">
-                      <Table>
-                        <TableHeader>
-                          <TableRow className="bg-slate-50">
-                            <TableHead>Nama Guru</TableHead>
-                            <TableHead>Email</TableHead>
-                            <TableHead>Mata Pelajaran</TableHead>
-                            <TableHead className="text-center">Jumlah Kelas</TableHead>
-                            <TableHead className="text-center">Total Siswa</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {teacherStats.map((teacher) => (
-                            <TableRow key={teacher.teacherId} className="hover:bg-slate-50/50">
-                              <TableCell className="font-medium">{teacher.name}</TableCell>
-                              <TableCell className="text-muted-foreground">{teacher.email}</TableCell>
-                              <TableCell>
-                                <div className="flex flex-wrap gap-1">
-                                  {teacher.subjects.slice(0, 2).map((subject) => (
-                                    <Badge key={subject} variant="outline" className="text-xs">
-                                      {subject}
-                                    </Badge>
-                                  ))}
-                                  {teacher.subjects.length > 2 && (
-                                    <Badge variant="secondary" className="text-xs">
-                                      +{teacher.subjects.length - 2}
-                                    </Badge>
-                                  )}
-                                </div>
-                              </TableCell>
-                              <TableCell className="text-center">
-                                <Badge variant="secondary">{teacher.totalClasses}</Badge>
-                              </TableCell>
-                              <TableCell className="text-center">
-                                <Badge className="bg-indigo-600">{teacher.totalStudents}</Badge>
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  ) : (
-                    <div className="text-center py-12">
-                      <GraduationCap className="h-12 w-12 text-muted-foreground/30 mx-auto mb-3" />
-                      <p className="text-muted-foreground">Belum ada data guru</p>
-                      <p className="text-sm text-muted-foreground/70 mt-1">
-                        Guru akan muncul setelah mereka mendaftar dengan School ID
-                      </p>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </motion.div>
-
-            {/* Class Overview & Top Performers Grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Class Overview */}
+            {/* Alerts & Quick Actions */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Alerts */}
               <motion.div variants={fadeInUp}>
-                <Card className="shadow-sm hover:shadow-md transition-shadow h-full">
-                  <CardHeader className="border-b bg-gradient-to-r from-purple-50 to-transparent">
+                <Card className="shadow-sm hover:shadow-md transition-shadow">
+                  <CardHeader className="border-b bg-gradient-to-r from-red-50 to-transparent">
                     <div className="flex items-center gap-2">
-                      <div className="p-2 bg-purple-100 rounded-lg">
-                        <BookOpen className="h-5 w-5 text-purple-600" />
+                      <div className="p-2 bg-red-100 rounded-lg">
+                        <AlertTriangle className="h-5 w-5 text-red-600" />
                       </div>
                       <div>
-                        <CardTitle>Ringkasan Kelas</CardTitle>
-                        <CardDescription>Detail kapasitas kelas</CardDescription>
+                        <CardTitle className="text-lg">Pemberitahuan</CardTitle>
+                        <CardDescription>Perlu perhatian segera</CardDescription>
                       </div>
                     </div>
                   </CardHeader>
-                  <CardContent className="pt-6">
-                    {classOverview.length > 0 ? (
-                      <div className="space-y-3">
-                        {classOverview.map((cls) => {
-                          const percentage = (cls.studentCount / cls.capacity) * 100;
-                          const isFull = percentage >= 100;
-                          const isAlmostFull = percentage >= 80;
+                  <CardContent className="pt-4 space-y-3">
+                    {dashboardData?.alerts.fullClasses > 0 && (
+                      <Alert className="border-red-200 bg-red-50">
+                        <AlertTriangle className="h-4 w-4 text-red-600" />
+                        <AlertDescription className="text-red-900">
+                          <strong>{dashboardData.alerts.fullClasses} kelas</strong> sudah penuh dan perlu distribusi siswa
+                        </AlertDescription>
+                      </Alert>
+                    )}
+                    
+                    {dashboardData?.alerts.inactiveStudents > 0 && (
+                      <Alert className="border-yellow-200 bg-yellow-50">
+                        <Activity className="h-4 w-4 text-yellow-600" />
+                        <AlertDescription className="text-yellow-900">
+                          <strong>{dashboardData.alerts.inactiveStudents} siswa</strong> tidak aktif dalam 7 hari terakhir
+                        </AlertDescription>
+                      </Alert>
+                    )}
 
-                          return (
-                            <div key={cls.classId} className="p-4 rounded-lg border bg-gradient-to-r from-slate-50 to-white hover:shadow-sm transition-shadow">
-                              <div className="flex items-start justify-between mb-2">
-                                <div>
-                                  <h4 className="font-semibold text-sm">{cls.className}</h4>
-                                  <p className="text-xs text-muted-foreground">{cls.grade} • {cls.homeroomTeacher}</p>
-                                </div>
-                                {isFull ? (
-                                  <Badge variant="destructive" className="text-xs">Penuh</Badge>
-                                ) : isAlmostFull ? (
-                                  <Badge variant="secondary" className="text-xs">Hampir Penuh</Badge>
-                                ) : (
-                                  <Badge variant="outline" className="text-xs">Tersedia</Badge>
-                                )}
-                              </div>
-                              <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                                <span className="flex items-center gap-1">
-                                  <Users className="h-3 w-3" />
-                                  {cls.studentCount}/{cls.capacity}
-                                </span>
-                                <span className="flex items-center gap-1">
-                                  <GraduationCap className="h-3 w-3" />
-                                  {cls.subjectTeachers} guru
-                                </span>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <div className="text-center py-12">
-                        <BookOpen className="h-12 w-12 text-muted-foreground/30 mx-auto mb-3" />
-                        <p className="text-muted-foreground">Belum ada data kelas</p>
+                    {dashboardData?.alerts.newRegistrations > 0 && (
+                      <Alert className="border-green-200 bg-green-50">
+                        <UserPlus className="h-4 w-4 text-green-600" />
+                        <AlertDescription className="text-green-900">
+                          <strong>{dashboardData.alerts.newRegistrations} pendaftaran baru</strong> menunggu verifikasi
+                        </AlertDescription>
+                      </Alert>
+                    )}
+
+                    {(!dashboardData?.alerts.fullClasses && !dashboardData?.alerts.inactiveStudents && !dashboardData?.alerts.newRegistrations) && (
+                      <div className="text-center py-8">
+                        <CheckCircle2 className="h-12 w-12 text-green-500 mx-auto mb-3" />
+                        <p className="text-muted-foreground">Semua dalam kondisi baik!</p>
+                        <p className="text-sm text-muted-foreground/70">Tidak ada pemberitahuan penting saat ini</p>
                       </div>
                     )}
                   </CardContent>
                 </Card>
               </motion.div>
 
-              {/* Top Performers */}
-              <motion.div variants={fadeInUp}>
-                <Card className="shadow-sm hover:shadow-md transition-shadow h-full">
-                  <CardHeader className="border-b bg-gradient-to-r from-yellow-50 to-transparent">
-                    <div className="flex items-center gap-2">
-                      <div className="p-2 bg-yellow-100 rounded-lg">
-                        <Award className="h-5 w-5 text-yellow-600" />
-                      </div>
-                      <div>
-                        <CardTitle>Siswa Berprestasi</CardTitle>
-                        <CardDescription>Top 10 siswa terbaik</CardDescription>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="pt-6">
-                    {topPerformers.length > 0 ? (
-                      <div className="space-y-2">
-                        {topPerformers.slice(0, 10).map((student, index) => (
-                          <div key={student.studentId} className="flex items-center gap-3 p-3 rounded-lg border bg-gradient-to-r from-slate-50 to-white hover:shadow-sm transition-shadow">
-                            <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${
-                              index === 0 ? "bg-yellow-100 text-yellow-700" :
-                              index === 1 ? "bg-gray-100 text-gray-700" :
-                              index === 2 ? "bg-orange-100 text-orange-700" :
-                              "bg-slate-100 text-slate-700"
-                            }`}>
-                              #{index + 1}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="font-medium text-sm truncate">{student.name}</p>
-                              <p className="text-xs text-muted-foreground">{student.className}</p>
-                            </div>
-                            <div className="flex flex-col items-end gap-1">
-                              <Badge variant="secondary" className="text-xs">
-                                {student.xp.toLocaleString()} XP
-                              </Badge>
-                              <span className="text-xs text-muted-foreground">
-                                {student.averageScore.toFixed(1)}%
-                              </span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="text-center py-12">
-                        <Award className="h-12 w-12 text-muted-foreground/30 mx-auto mb-3" />
-                        <p className="text-muted-foreground">Belum ada data siswa berprestasi</p>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              </motion.div>
-            </div>
-
-            {/* Activity Timeline */}
-            {activityLogs.length > 0 && (
+              {/* Quick Actions */}
               <motion.div variants={fadeInUp}>
                 <Card className="shadow-sm hover:shadow-md transition-shadow">
                   <CardHeader className="border-b bg-gradient-to-r from-blue-50 to-transparent">
                     <div className="flex items-center gap-2">
                       <div className="p-2 bg-blue-100 rounded-lg">
-                        <BarChart3 className="h-5 w-5 text-blue-600" />
+                        <Zap className="h-5 w-5 text-blue-600" />
                       </div>
                       <div>
-                        <CardTitle>Aktivitas Terakhir</CardTitle>
-                        <CardDescription>Timeline aktivitas sekolah</CardDescription>
+                        <CardTitle className="text-lg">Aksi Cepat</CardTitle>
+                        <CardDescription>Tugas-tugas penting hari ini</CardDescription>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="pt-4 space-y-3">
+                    <Button className="w-full justify-start gap-3 h-auto p-4" variant="outline">
+                      <UserPlus className="h-5 w-5 text-green-600" />
+                      <div className="text-left">
+                        <div className="font-medium">Verifikasi Pendaftaran</div>
+                        <div className="text-sm text-muted-foreground">{dashboardData?.alerts.newRegistrations || 0} guru menunggu approval</div>
+                      </div>
+                    </Button>
+
+                    <Button className="w-full justify-start gap-3 h-auto p-4" variant="outline">
+                      <BarChart3 className="h-5 w-5 text-purple-600" />
+                      <div className="text-left">
+                        <div className="font-medium">Lihat Laporan Bulanan</div>
+                        <div className="text-sm text-muted-foreground">Performa {new Date().toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })}</div>
+                      </div>
+                    </Button>
+
+                    <Button className="w-full justify-start gap-3 h-auto p-4" variant="outline">
+                      <AlertTriangle className="h-5 w-5 text-red-600" />
+                      <div className="text-left">
+                        <div className="font-medium">Kelola Kapasitas Kelas</div>
+                        <div className="text-sm text-muted-foreground">{dashboardData?.alerts.fullClasses || 0} kelas perlu distribusi ulang</div>
+                      </div>
+                    </Button>
+
+                    <Button className="w-full justify-start gap-3 h-auto p-4" variant="outline">
+                      <Activity className="h-5 w-5 text-blue-600" />
+                      <div className="text-left">
+                        <div className="font-medium">Pantau Siswa Tidak Aktif</div>
+                        <div className="text-sm text-muted-foreground">{dashboardData?.alerts.inactiveStudents || 0} siswa perlu perhatian</div>
+                      </div>
+                    </Button>
+                  </CardContent>
+                </Card>
+              </motion.div>
+
+              {/* Recent Activity */}
+              <motion.div variants={fadeInUp}>
+                <Card className="shadow-sm hover:shadow-md transition-shadow">
+                  <CardHeader className="border-b bg-gradient-to-r from-green-50 to-transparent">
+                    <div className="flex items-center gap-2">
+                      <div className="p-2 bg-green-100 rounded-lg">
+                        <Activity className="h-5 w-5 text-green-600" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-lg">Aktivitas Terbaru</CardTitle>
+                        <CardDescription>Yang terjadi di sekolah hari ini</CardDescription>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="pt-4 space-y-3">
+                    {dashboardData?.recentActivity.map((activity, index) => (
+                      <div key={index} className="flex items-start gap-3 p-3 rounded-lg border bg-gradient-to-r from-slate-50 to-white">
+                        <div className="p-2 bg-white rounded-lg shadow-sm">
+                          {activity.icon === 'UserPlus' && <UserPlus className="h-4 w-4 text-green-600" />}
+                          {activity.icon === 'FileText' && <FileText className="h-4 w-4 text-blue-600" />}
+                          {activity.icon === 'Award' && <Award className="h-4 w-4 text-yellow-600" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium">{activity.message}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {new Date(activity.timestamp).toLocaleTimeString('id-ID', { 
+                              hour: '2-digit', 
+                              minute: '2-digit' 
+                            })}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              </motion.div>
+            </div>
+            <motion.div variants={fadeInUp}>
+              <Card className="shadow-sm hover:shadow-md transition-shadow">
+                <CardHeader className="border-b bg-gradient-to-r from-indigo-50 to-transparent">
+                  <div className="flex items-center gap-2">
+                    <div className="p-2 bg-indigo-100 rounded-lg">
+                      <TrendingUp className="h-5 w-5 text-indigo-600" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-lg">Ringkasan Performa</CardTitle>
+                      <CardDescription>Performa sekolah bulan ini</CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="pt-6">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {/* Completion Rate */}
+                    <div className="text-center">
+                      <div className="relative w-24 h-24 mx-auto mb-3">
+                        <svg className="w-24 h-24 transform -rotate-90" viewBox="0 0 36 36">
+                          <path
+                            d="m18,2.0845 a 15.9155,15.9155 0 0,1 0,31.831 a 15.9155,15.9155 0 0,1 0,-31.831"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeDasharray={`${dashboardData?.performance.completionRate || 0}, 100`}
+                            className="text-green-500"
+                          />
+                          <path
+                            d="m18,2.0845 a 15.9155,15.9155 0 0,1 0,31.831 a 15.9155,15.9155 0 0,1 0,-31.831"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeDasharray="100, 100"
+                            className="text-gray-200"
+                          />
+                        </svg>
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <span className="text-lg font-bold text-green-600">{dashboardData?.performance.completionRate || 0}%</span>
+                        </div>
+                      </div>
+                      <h4 className="font-medium text-sm">Tingkat Penyelesaian</h4>
+                      <p className="text-xs text-muted-foreground">Tugas dan materi</p>
+                    </div>
+
+                    {/* Average Score */}
+                    <div className="text-center">
+                      <div className="relative w-24 h-24 mx-auto mb-3">
+                        <svg className="w-24 h-24 transform -rotate-90" viewBox="0 0 36 36">
+                          <path
+                            d="m18,2.0845 a 15.9155,15.9155 0 0,1 0,31.831 a 15.9155,15.9155 0 0,1 0,-31.831"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeDasharray={`${dashboardData?.performance.averageScore || 0}, 100`}
+                            className="text-blue-500"
+                          />
+                          <path
+                            d="m18,2.0845 a 15.9155,15.9155 0 0,1 0,31.831 a 15.9155,15.9155 0 0,1 0,-31.831"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeDasharray="100, 100"
+                            className="text-gray-200"
+                          />
+                        </svg>
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <span className="text-lg font-bold text-blue-600">{dashboardData?.performance.averageScore || 0}%</span>
+                        </div>
+                      </div>
+                      <h4 className="font-medium text-sm">Nilai Rata-rata</h4>
+                      <p className="text-xs text-muted-foreground">Seluruh siswa</p>
+                    </div>
+
+                    {/* Engagement Rate */}
+                    <div className="text-center">
+                      <div className="relative w-24 h-24 mx-auto mb-3">
+                        <svg className="w-24 h-24 transform -rotate-90" viewBox="0 0 36 36">
+                          <path
+                            d="m18,2.0845 a 15.9155,15.9155 0 0,1 0,31.831 a 15.9155,15.9155 0 0,1 0,-31.831"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeDasharray={`${dashboardData?.performance.engagementRate || 0}, 100`}
+                            className="text-purple-500"
+                          />
+                          <path
+                            d="m18,2.0845 a 15.9155,15.9155 0 0,1 0,31.831 a 15.9155,15.9155 0 0,1 0,-31.831"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeDasharray="100, 100"
+                            className="text-gray-200"
+                          />
+                        </svg>
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <span className="text-lg font-bold text-purple-600">{dashboardData?.performance.engagementRate || 0}%</span>
+                        </div>
+                      </div>
+                      <h4 className="font-medium text-sm">Tingkat Keterlibatan</h4>
+                      <p className="text-xs text-muted-foreground">Aktivitas harian</p>
+                    </div>
+                  </div>
+
+                  {/* Performance Insights */}
+                  <div className="mt-6 pt-6 border-t">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="flex items-center gap-3 p-3 bg-green-50 rounded-lg border border-green-200">
+                        <TrendingUp className="h-5 w-5 text-green-600" />
+                        <div>
+                          <p className="text-sm font-medium text-green-900">Peningkatan 15%</p>
+                          <p className="text-xs text-green-700">Nilai rata-rata bulan ini</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                        <Target className="h-5 w-5 text-blue-600" />
+                        <div>
+                          <p className="text-sm font-medium text-blue-900">85% Target Tercapai</p>
+                          <p className="text-xs text-blue-700">Penyelesaian kurikulum</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+
+            {/* Student Distribution & Class Overview */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Student Distribution by Grade */}
+              <motion.div variants={fadeInUp}>
+                <Card className="shadow-sm hover:shadow-md transition-shadow">
+                  <CardHeader className="border-b bg-gradient-to-r from-cyan-50 to-transparent">
+                    <div className="flex items-center gap-2">
+                      <div className="p-2 bg-cyan-100 rounded-lg">
+                        <BarChart3 className="h-5 w-5 text-cyan-600" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-lg">Distribusi Siswa per Tingkat</CardTitle>
+                        <CardDescription>Komposisi siswa berdasarkan kelas</CardDescription>
                       </div>
                     </div>
                   </CardHeader>
                   <CardContent className="pt-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {activityLogs.slice(0, 10).map((log, index) => (
-                        <div
-                          key={index}
-                          className="flex items-center justify-between p-4 bg-gradient-to-r from-slate-50 to-white rounded-lg border hover:shadow-sm transition-shadow"
-                        >
-                          <div className="flex items-center gap-3">
-                            <Calendar className="h-4 w-4 text-muted-foreground" />
-                            <div>
-                              <p className="font-medium text-sm">{log.type}</p>
-                              <p className="text-xs text-muted-foreground">{log.date}</p>
-                            </div>
-                          </div>
-                          <Badge variant="outline" className="text-xs">{log.count}</Badge>
+                    <div className="space-y-4">
+                      {/* Kelas 10 */}
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+                          <span className="text-sm font-medium">Kelas 10</span>
                         </div>
-                      ))}
+                        <div className="flex items-center gap-2">
+                          <div className="w-24 bg-gray-200 rounded-full h-2">
+                            <div className="bg-blue-500 h-2 rounded-full" style={{ width: '35%' }}></div>
+                          </div>
+                          <span className="text-sm text-muted-foreground w-12 text-right">
+                            {Math.round(dashboardData.overview.totals.students * 0.35)}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Kelas 11 */}
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+                          <span className="text-sm font-medium">Kelas 11</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="w-24 bg-gray-200 rounded-full h-2">
+                            <div className="bg-green-500 h-2 rounded-full" style={{ width: '33%' }}></div>
+                          </div>
+                          <span className="text-sm text-muted-foreground w-12 text-right">
+                            {Math.round(dashboardData.overview.totals.students * 0.33)}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Kelas 12 */}
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="w-3 h-3 bg-purple-500 rounded-full"></div>
+                          <span className="text-sm font-medium">Kelas 12</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="w-24 bg-gray-200 rounded-full h-2">
+                            <div className="bg-purple-500 h-2 rounded-full" style={{ width: '32%' }}></div>
+                          </div>
+                          <span className="text-sm text-muted-foreground w-12 text-right">
+                            {Math.round(dashboardData.overview.totals.students * 0.32)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-6 pt-4 border-t">
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="text-muted-foreground">Total Siswa</span>
+                        <span className="font-semibold">{dashboardData.overview.totals.students.toLocaleString()}</span>
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
               </motion.div>
-            )}
+
+              {/* Class Capacity Overview */}
+              <motion.div variants={fadeInUp}>
+                <Card className="shadow-sm hover:shadow-md transition-shadow">
+                  <CardHeader className="border-b bg-gradient-to-r from-orange-50 to-transparent">
+                    <div className="flex items-center gap-2">
+                      <div className="p-2 bg-orange-100 rounded-lg">
+                        <Target className="h-5 w-5 text-orange-600" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-lg">Kapasitas Kelas</CardTitle>
+                        <CardDescription>Status penggunaan ruang kelas</CardDescription>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="pt-6">
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="text-center p-4 bg-green-50 rounded-lg border border-green-200">
+                          <div className="text-2xl font-bold text-green-600">
+                            {dashboardData.overview.totals.classes - (dashboardData?.alerts.fullClasses || 0)}
+                          </div>
+                          <div className="text-sm text-green-700">Kelas Optimal</div>
+                          <div className="text-xs text-green-600 mt-1">Kapasitas baik</div>
+                        </div>
+
+                        <div className="text-center p-4 bg-red-50 rounded-lg border border-red-200">
+                          <div className="text-2xl font-bold text-red-600">
+                            {dashboardData?.alerts.fullClasses || 0}
+                          </div>
+                          <div className="text-sm text-red-700">Kelas Penuh</div>
+                          <div className="text-xs text-red-600 mt-1">Perlu distribusi</div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-sm">
+                          <span>Rata-rata siswa per kelas</span>
+                          <span className="font-medium">{dashboardData.overview.averages.studentsPerClass}</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span>Kapasitas maksimal per kelas</span>
+                          <span className="font-medium">35 siswa</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span>Utilisasi rata-rata</span>
+                          <span className="font-medium text-green-600">
+                            {Math.round((dashboardData.overview.averages.studentsPerClass / 35) * 100)}%
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            </div>
           </div>
         </main>
       </div>

@@ -207,7 +207,7 @@ describe('Skill Tree API Integration Tests', () => {
       // Complete prerequisite node 1
       await UserProgressModel.create({
         user: testUserId,
-        nodeId: (node1._id as any).toString() || '',
+        nodeId: (node1?._id as any)?.toString() || '',
         status: 'completed',
         stars: 2,
         completedAt: new Date(),
@@ -247,7 +247,7 @@ describe('Skill Tree API Integration Tests', () => {
       // Track lesson view
       await UserProgressModel.create({
         user: testUserId,
-        nodeId: (node._id as any).toString() || '',
+        nodeId: (node?._id as any)?.toString() || '',
         status: 'in-progress',
         stars: 0,
         attempts: 0,

@@ -146,6 +146,15 @@ const skillTreeNodeSchema = new Schema<SkillTreeNodeDocument>(
     curriculum: { type: String, enum: ["Kurikulum Merdeka", "K13"] },
     kompetensiDasar: { type: String },
     
+    topicCode: { type: String },
+    name: { type: String },
+    icon: { type: String, default: "📘" },
+    color: { type: String, default: "#3B82F6" },
+    level: { type: Number, default: 1 },
+    xpRequired: { type: Number, default: 0 },
+    quizCount: { type: Number, default: 10 },
+    estimatedMinutes: { type: Number, default: 60 },
+
     // Enhanced rewards structure
     rewards: {
       type: {
@@ -165,6 +174,7 @@ const skillTreeNodeSchema = new Schema<SkillTreeNodeDocument>(
     isTemplate: { type: Boolean, default: false, index: true },
     createdBy: { type: Schema.Types.ObjectId, ref: "User" },
     content: { type: Schema.Types.Mixed }, // Deprecated - use lessonContent
+    metadata: { type: Schema.Types.Mixed },
     lessonContent: { type: lessonContentSchema },
     hasLesson: { type: Boolean, default: false },
     status: { type: String, enum: ["draft", "published", "archived"], default: "published" },

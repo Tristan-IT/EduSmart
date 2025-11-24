@@ -33,12 +33,8 @@ import {
   TrendingDown,
   PlayCircle
 } from "lucide-react";
-import { mockStudents } from "@/data/mockData";
-import { getSkillTree, getTelemetryEvents } from "@/lib/mockApi";
-import { allQuizQuestions } from "@/data/quizBank";
-import { allLearningModules } from "@/data/learningModules";
+import { getSkillTree } from "@/lib/mockApi";
 import type { SkillTreeUnit } from "@/data/gamifiedLessons";
-import type { TelemetryEvent } from "@/data/telemetry";
 import teacherImage from "@/assets/teacher-dashboard.jpg";
 import { toast } from "sonner";
 import { 
@@ -49,11 +45,64 @@ import {
   scaleIn 
 } from "@/lib/animations";
 
+// Interfaces for API data
+interface MyStudent {
+  studentId: string;
+  name: string;
+  email: string;
+  className: string;
+  xp: number;
+  completedLessons: number;
+  averageScore: number;
+}
+
+interface MyClass {
+  _id: string;
+  classId: string;
+  className: string;
+  grade: string;
+  section: string;
+  role: string;
+  subjects: string[];
+  students: {
+    total: number;
+    max: number;
+    percentage: number;
+  };
+  performance: {
+    averageXP: number;
+    averageLevel: number;
+  };
+}
+
+interface Analytics {
+  totals: {
+    lessonsPlanned: number;
+    lessonsCompleted: number;
+    quizzesCreated: number;
+    assignmentsCreated: number;
+    videosUploaded: number;
+    totalContent: number;
+  };
+  averages: {
+    studentEngagement: number;
+    completionRate: number;
+  };
+  totalStudents?: number;
+}
+
 const TeacherDashboard = () => {
   const [selectedStudent, setSelectedStudent] = useState<string | null>(null);
   const [interventionType, setInterventionType] = useState("");
   const [interventionNote, setInterventionNote] = useState("");
   const [dueDate, setDueDate] = useState("");
+  
+  // API Data States
+  const [loading, setLoading] = useState(true);
+  const [myStudents, setMyStudents] = useState<MyStudent[]>([]);
+  const [myClasses, setMyClasses] = useState<MyClass[]>([]);
+  const [analytics, setAnalytics] = useState<Analytics | null>(null);
+  const [error, setError] = useState("");
   const [interventionLogs, setInterventionLogs] = useState<Array<{
     id: string;
     studentId: string;
@@ -76,31 +125,72 @@ const TeacherDashboard = () => {
     },
   ]);
   const [skillTree, setSkillTree] = useState<SkillTreeUnit[]>([]);
-  const [telemetryEvents, setTelemetryEvents] = useState<TelemetryEvent[]>([]);
+  const [telemetryEvents, setTelemetryEvents] = useState<any[]>([]);
 
-  const riskStudents = mockStudents.filter(s => s.riskLevel === 'high' || s.riskLevel === 'medium');
-  const totalStudents = mockStudents.length;
-  const atRiskCount = mockStudents.filter(s => s.riskLevel === 'high').length;
-
+  // Load dashboard data from API
   useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        const [skillTreeResponse, telemetryResponse] = await Promise.all([
-          getSkillTree(),
-          getTelemetryEvents(),
-        ]);
-        if (!mounted) return;
-        setSkillTree(skillTreeResponse);
-        setTelemetryEvents(telemetryResponse.slice(0, 8));
-      } catch (error) {
-        // ignore silently
-      }
-    })();
-    return () => {
-      mounted = false;
-    };
+    loadDashboardData();
   }, []);
+
+  const loadDashboardData = async () => {
+    setLoading(true);
+    try {
+      const token = localStorage.getItem("token");
+      const headers = {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      };
+
+      // Load each API independently with error handling
+      const loadClasses = fetch("http://localhost:5000/api/teacher-dashboard/my-classes", { headers })
+        .then(res => res.json())
+        .then(data => data.success ? setMyClasses(data.data) : null)
+        .catch(err => console.warn("Failed to load classes:", err));
+
+      const loadAnalytics = fetch("http://localhost:5000/api/teacher-dashboard/my-analytics", { headers })
+        .then(res => res.json())
+        .then(data => data.success ? setAnalytics(data.data) : null)
+        .catch(err => console.warn("Failed to load analytics:", err));
+
+      const loadStudents = fetch("http://localhost:5000/api/teacher-dashboard/my-students", { headers })
+        .then(res => res.json())
+        .then(data => data.success ? setMyStudents(data.data) : null)
+        .catch(err => console.warn("Failed to load students:", err));
+
+      const loadActivities = fetch("http://localhost:5000/api/teacher-dashboard/recent-activities?limit=10", { headers })
+        .then(res => res.json())
+        .then(data => data.success ? setTelemetryEvents(data.data) : null)
+        .catch(err => {
+          console.warn("Failed to load activities:", err);
+          setTelemetryEvents([]); // Set empty array instead of crashing
+        });
+
+      const loadInterventions = fetch("http://localhost:5000/api/teacher-dashboard/interventions?limit=20", { headers })
+        .then(res => res.json())
+        .then(data => data.success ? setInterventionLogs(data.data) : null)
+        .catch(err => console.warn("Failed to load interventions:", err));
+
+      const loadSkillTree = getSkillTree()
+        .then(data => setSkillTree(data))
+        .catch(err => console.warn("Failed to load skill tree:", err));
+
+      // Wait for all (but don't fail if one fails)
+      await Promise.allSettled([
+        loadClasses, 
+        loadAnalytics, 
+        loadStudents, 
+        loadActivities, 
+        loadInterventions, 
+        loadSkillTree
+      ]);
+
+    } catch (err: any) {
+      console.error("Dashboard error:", err);
+      setError(err.message || "Gagal memuat data dashboard");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const currentUnit = useMemo(() => {
     if (skillTree.length === 0) return undefined;
@@ -108,49 +198,55 @@ const TeacherDashboard = () => {
   }, [skillTree]);
 
   const activeSkillTitle = currentUnit?.skills.find((skill) => skill.status === "current")?.title ?? "-";
-  const telemetryLabels: Record<TelemetryEvent["type"], string> = {
-    lesson_completed: "Lesson selesai",
-    lesson_unlocked: "Lesson terbuka",
-    skill_unlocked: "Skill baru",
-    unit_progressed: "Unit maju",
-    reward_claimed: "Reward",
-    daily_goal_claimed: "Goal harian",
-  };
 
-  const handleSendIntervention = () => {
+  const handleSendIntervention = async () => {
     if (selectedStudent && interventionType && interventionNote) {
-      const student = mockStudents.find((s) => s.id === selectedStudent);
-      toast.success(`Intervensi berhasil dikirim ke ${student?.name}`);
-      setInterventionLogs((prev) => [
-        {
-          id: `log-${prev.length + 1}`,
-          studentId: selectedStudent,
-          studentName: student?.name ?? "-",
-          type:
-            interventionType === "remedial"
-              ? "Remedial Khusus"
-              : interventionType === "tutoring"
-              ? "Bimbingan 1-on-1"
-              : interventionType === "peer"
-              ? "Peer Tutoring"
-              : "Komunikasi Orang Tua",
-          note: interventionNote,
-          dueDate,
-          createdAt: new Date().toISOString(),
-          status: "terkirim",
-        },
-        ...prev,
-      ]);
-      setSelectedStudent(null);
-      setInterventionType("");
-      setInterventionNote("");
-      setDueDate("");
-    }
-  };
+      try {
+        const token = localStorage.getItem("token");
+        const student = myStudents.find((s) => s.studentId === selectedStudent);
+        
+        const response = await fetch("http://localhost:5000/api/teacher-dashboard/interventions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            studentId: selectedStudent,
+            type: interventionType,
+            title:
+              interventionType === "remedial"
+                ? "Remedial Khusus"
+                : interventionType === "tutoring"
+                ? "Bimbingan 1-on-1"
+                : interventionType === "peer"
+                ? "Peer Tutoring"
+                : interventionType === "parent"
+                ? "Komunikasi Orang Tua"
+                : "Lainnya",
+            note: interventionNote,
+            dueDate: dueDate || undefined,
+            priority: "medium",
+          }),
+        });
 
-  const getOverallMastery = (student: typeof mockStudents[0]) => {
-    const values = Object.values(student.masteryPerTopic);
-    return Math.round(values.reduce((a, b) => a + b, 0) / values.length);
+        const data = await response.json();
+        
+        if (data.success) {
+          toast.success(`Intervensi berhasil dikirim ke ${student?.name}`);
+          // Reload interventions
+          await loadDashboardData();
+          setSelectedStudent(null);
+          setInterventionType("");
+          setInterventionNote("");
+          setDueDate("");
+        } else {
+          toast.error(data.message || "Gagal mengirim intervensi");
+        }
+      } catch (err: any) {
+        toast.error(err.message || "Gagal mengirim intervensi");
+      }
+    }
   };
 
   return (
@@ -177,446 +273,337 @@ const TeacherDashboard = () => {
 
         {/* Main Content */}
         <div className="container px-6 py-8 max-w-7xl mx-auto">
-          {/* Stats Overview */}
-          <div className="grid md:grid-cols-4 gap-4 mb-8 animate-slide-in">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Siswa</CardTitle>
-              <Users className="h-4 w-4 text-primary" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{totalStudents}</div>
-              <p className="text-xs text-muted-foreground">Kelas 10A & 10B</p>
-            </CardContent>
-          </Card>
+          {loading && (
+            <div className="flex items-center justify-center py-12">
+              <p className="text-muted-foreground">Memuat dashboard...</p>
+            </div>
+          )}
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Butuh Perhatian</CardTitle>
-              <AlertTriangle className="h-4 w-4 text-destructive" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-destructive">{atRiskCount}</div>
-              <p className="text-xs text-muted-foreground">Risiko tinggi</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Rata-rata Kelas</CardTitle>
-              <TrendingUp className="h-4 w-4 text-accent" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">72%</div>
-              <p className="text-xs text-muted-foreground">+3% dari minggu lalu</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Intervensi Aktif</CardTitle>
-              <MessageSquare className="h-4 w-4 text-warning" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">3</div>
-              <p className="text-xs text-muted-foreground">Menunggu tindak lanjut</p>
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="grid lg:grid-cols-3 gap-6">
-          {/* Main Content */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* NEW: Quiz Bank Analytics */}
-            <Card className="animate-fade-in">
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="text-xl flex items-center gap-2">
-                      <ClipboardList className="w-5 h-5 text-blue-500" />
-                      Analitik Bank Soal & Quiz
-                    </CardTitle>
-                    <CardDescription>
-                      Statistik penggunaan dan performa quiz
-                    </CardDescription>
-                  </div>
-                  <Badge variant="secondary">{allQuizQuestions.length} Total Soal</Badge>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {/* Quiz Stats by Category */}
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                    <div className="bg-blue-50 dark:bg-blue-950/20 p-3 rounded-lg border border-blue-200 dark:border-blue-800">
-                      <div className="text-xs text-muted-foreground mb-1">Algebra</div>
-                      <div className="text-2xl font-bold text-blue-600">50</div>
-                      <div className="text-xs text-muted-foreground">soal</div>
-                    </div>
-                    <div className="bg-green-50 dark:bg-green-950/20 p-3 rounded-lg border border-green-200 dark:border-green-800">
-                      <div className="text-xs text-muted-foreground mb-1">Geometry</div>
-                      <div className="text-2xl font-bold text-green-600">45</div>
-                      <div className="text-xs text-muted-foreground">soal</div>
-                    </div>
-                    <div className="bg-purple-50 dark:bg-purple-950/20 p-3 rounded-lg border border-purple-200 dark:border-purple-800">
-                      <div className="text-xs text-muted-foreground mb-1">Calculus</div>
-                      <div className="text-2xl font-bold text-purple-600">40</div>
-                      <div className="text-xs text-muted-foreground">soal</div>
-                    </div>
-                    <div className="bg-orange-50 dark:bg-orange-950/20 p-3 rounded-lg border border-orange-200 dark:border-orange-800">
-                      <div className="text-xs text-muted-foreground mb-1">Statistics</div>
-                      <div className="text-2xl font-bold text-orange-600">35</div>
-                      <div className="text-xs text-muted-foreground">soal</div>
-                    </div>
-                    <div className="bg-pink-50 dark:bg-pink-950/20 p-3 rounded-lg border border-pink-200 dark:border-pink-800">
-                      <div className="text-xs text-muted-foreground mb-1">Trigonometry</div>
-                      <div className="text-2xl font-bold text-pink-600">38</div>
-                      <div className="text-xs text-muted-foreground">soal</div>
-                    </div>
-                    <div className="bg-indigo-50 dark:bg-indigo-950/20 p-3 rounded-lg border border-indigo-200 dark:border-indigo-800">
-                      <div className="text-xs text-muted-foreground mb-1">Logic</div>
-                      <div className="text-2xl font-bold text-indigo-600">30</div>
-                      <div className="text-xs text-muted-foreground">soal</div>
-                    </div>
-                  </div>
-
-                  {/* Difficulty Distribution */}
-                  <div className="space-y-2 mt-4">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Distribusi Kesulitan</span>
-                    </div>
-                    <div className="grid grid-cols-3 gap-2">
-                      <div className="text-center p-2 bg-green-50 dark:bg-green-950/20 rounded border border-green-200">
-                        <div className="text-xs text-muted-foreground">Mudah</div>
-                        <div className="text-xl font-bold text-green-600">~40%</div>
-                      </div>
-                      <div className="text-center p-2 bg-yellow-50 dark:bg-yellow-950/20 rounded border border-yellow-200">
-                        <div className="text-xs text-muted-foreground">Sedang</div>
-                        <div className="text-xl font-bold text-yellow-600">~40%</div>
-                      </div>
-                      <div className="text-center p-2 bg-red-50 dark:bg-red-950/20 rounded border border-red-200">
-                        <div className="text-xs text-muted-foreground">Sulit</div>
-                        <div className="text-xl font-bold text-red-600">~20%</div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Quiz Performance Stats */}
-                  <div className="mt-4 pt-4 border-t">
-                    <div className="text-sm font-medium mb-3">Performa Quiz Kelas</div>
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-muted-foreground">Rata-rata skor</span>
-                        <span className="text-sm font-semibold">78%</span>
-                      </div>
-                      <Progress value={78} className="h-2" />
-                    </div>
-                    <div className="space-y-2 mt-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-muted-foreground">Completion rate</span>
-                        <span className="text-sm font-semibold">85%</span>
-                      </div>
-                      <Progress value={85} className="h-2" />
-                    </div>
-                  </div>
+          {error && (
+            <Card className="mb-6 border-destructive">
+              <CardContent className="pt-6">
+                <div className="flex items-center gap-3">
+                  <AlertTriangle className="h-5 w-5 text-destructive" />
+                  <p className="text-sm text-destructive">{error}</p>
                 </div>
               </CardContent>
             </Card>
+          )}
 
-            {/* NEW: Learning Modules Analytics */}
-            <Card className="animate-fade-in">
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="text-xl flex items-center gap-2">
-                      <PlayCircle className="w-5 h-5 text-green-500" />
-                      Modul Pembelajaran
-                    </CardTitle>
-                    <CardDescription>
-                      Aktivitas dan progress pembelajaran
-                    </CardDescription>
+          {!loading && analytics && (
+            <>
+              {/* Stats Overview */}
+              <div className="grid md:grid-cols-4 gap-4 mb-8 animate-slide-in">
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Total Siswa</CardTitle>
+                    <Users className="h-4 w-4 text-primary" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">{myStudents.length}</div>
+                    <p className="text-xs text-muted-foreground">
+                      {myClasses.length} kelas Anda
+                    </p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Total Konten</CardTitle>
+                    <BookOpen className="h-4 w-4 text-purple-600" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">{analytics.totals.totalContent}</div>
+                    <p className="text-xs text-muted-foreground">
+                      {analytics.totals.quizzesCreated} kuis, {analytics.totals.lessonsCompleted} lessons
+                    </p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Tingkat Penyelesaian</CardTitle>
+                    <TrendingUp className="h-4 w-4 text-accent" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">
+                      {analytics.averages.completionRate.toFixed(1)}%
+                    </div>
+                    <p className="text-xs text-muted-foreground">Rata-rata kelas</p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Engagement Siswa</CardTitle>
+                    <MessageSquare className="h-4 w-4 text-warning" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">
+                      {analytics.averages.studentEngagement.toFixed(1)}%
+                    </div>
+                    <p className="text-xs text-muted-foreground">Rata-rata engagement</p>
+                  </CardContent>
+                </Card>
+              </div>
+            </>
+          )}
+
+        {!loading && analytics && (
+          <div className="grid lg:grid-cols-3 gap-6">
+            {/* Main Content */}
+            <div className="lg:col-span-2 space-y-6">
+              {/* Teacher Analytics Summary */}
+              <Card className="animate-fade-in">
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="text-xl flex items-center gap-2">
+                        <BarChart3 className="w-5 h-5 text-blue-500" />
+                        Ringkasan Aktivitas Mengajar
+                      </CardTitle>
+                      <CardDescription>
+                        Statistik konten dan aktivitas pembelajaran
+                      </CardDescription>
+                    </div>
+                    <Badge variant="secondary">{analytics.totals.totalContent} Konten</Badge>
                   </div>
-                  <Badge variant="secondary">{allLearningModules.length} Modul</Badge>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {/* Content Stats */}
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                      <div className="bg-blue-50 dark:bg-blue-950/20 p-3 rounded-lg border border-blue-200 dark:border-blue-800">
+                        <div className="text-xs text-muted-foreground mb-1">Lessons</div>
+                        <div className="text-2xl font-bold text-blue-600">
+                          {analytics.totals.lessonsCompleted}
+                        </div>
+                        <div className="text-xs text-muted-foreground">diselesaikan</div>
+                      </div>
+                      <div className="bg-green-50 dark:bg-green-950/20 p-3 rounded-lg border border-green-200 dark:border-green-800">
+                        <div className="text-xs text-muted-foreground mb-1">Kuis</div>
+                        <div className="text-2xl font-bold text-green-600">
+                          {analytics.totals.quizzesCreated}
+                        </div>
+                        <div className="text-xs text-muted-foreground">dibuat</div>
+                      </div>
+                      <div className="bg-purple-50 dark:bg-purple-950/20 p-3 rounded-lg border border-purple-200 dark:border-purple-800">
+                        <div className="text-xs text-muted-foreground mb-1">Tugas</div>
+                        <div className="text-2xl font-bold text-purple-600">
+                          {analytics.totals.assignmentsCreated}
+                        </div>
+                        <div className="text-xs text-muted-foreground">diberikan</div>
+                      </div>
+                      <div className="bg-orange-50 dark:bg-orange-950/20 p-3 rounded-lg border border-orange-200 dark:border-orange-800">
+                        <div className="text-xs text-muted-foreground mb-1">Video</div>
+                        <div className="text-2xl font-bold text-orange-600">
+                          {analytics.totals.videosUploaded}
+                        </div>
+                        <div className="text-xs text-muted-foreground">diunggah</div>
+                      </div>
+                      <div className="bg-pink-50 dark:bg-pink-950/20 p-3 rounded-lg border border-pink-200 dark:border-pink-800">
+                        <div className="text-xs text-muted-foreground mb-1">Planned</div>
+                        <div className="text-2xl font-bold text-pink-600">
+                          {analytics.totals.lessonsPlanned}
+                        </div>
+                        <div className="text-xs text-muted-foreground">lessons</div>
+                      </div>
+                      <div className="bg-indigo-50 dark:bg-indigo-950/20 p-3 rounded-lg border border-indigo-200 dark:border-indigo-800">
+                        <div className="text-xs text-muted-foreground mb-1">Total</div>
+                        <div className="text-2xl font-bold text-indigo-600">
+                          {analytics.totals.totalContent}
+                        </div>
+                        <div className="text-xs text-muted-foreground">konten</div>
+                      </div>
+                    </div>
+
+                    {/* Performance Stats */}
+                    <div className="mt-4 pt-4 border-t">
+                      <div className="text-sm font-medium mb-3">Performa Kelas</div>
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-muted-foreground">Tingkat Penyelesaian</span>
+                          <span className="text-sm font-semibold">
+                            {analytics.averages.completionRate.toFixed(1)}%
+                          </span>
+                        </div>
+                        <Progress value={analytics.averages.completionRate} className="h-2" />
+                      </div>
+                      <div className="space-y-2 mt-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-muted-foreground">Engagement Siswa</span>
+                          <span className="text-sm font-semibold">
+                            {analytics.averages.studentEngagement.toFixed(1)}%
+                          </span>
+                        </div>
+                        <Progress value={analytics.averages.studentEngagement} className="h-2" />
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* My Classes Summary */}
+              <Card className="animate-fade-in">
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="text-xl flex items-center gap-2">
+                        <Users className="w-5 h-5 text-green-500" />
+                        Kelas Saya
+                      </CardTitle>
+                      <CardDescription>
+                        Ringkasan kelas yang Anda ajar
+                      </CardDescription>
+                    </div>
+                    <Badge variant="secondary">{myClasses.length} Kelas</Badge>
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="space-y-4">
-                  {/* Module Stats by Category */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="bg-blue-50 dark:bg-blue-950/20 p-3 rounded-lg border border-blue-200 dark:border-blue-800">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs font-medium text-blue-700 dark:text-blue-400">Algebra</span>
-                        <Badge variant="outline" className="text-xs">3 modul</Badge>
-                      </div>
-                      <div className="text-sm text-muted-foreground">185 menit total</div>
-                    </div>
-                    <div className="bg-green-50 dark:bg-green-950/20 p-3 rounded-lg border border-green-200 dark:border-green-800">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs font-medium text-green-700 dark:text-green-400">Geometry</span>
-                        <Badge variant="outline" className="text-xs">3 modul</Badge>
-                      </div>
-                      <div className="text-sm text-muted-foreground">165 menit total</div>
-                    </div>
-                    <div className="bg-purple-50 dark:bg-purple-950/20 p-3 rounded-lg border border-purple-200 dark:border-purple-800">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs font-medium text-purple-700 dark:text-purple-400">Calculus</span>
-                        <Badge variant="outline" className="text-xs">1 modul</Badge>
-                      </div>
-                      <div className="text-sm text-muted-foreground">65 menit total</div>
-                    </div>
-                    <div className="bg-orange-50 dark:bg-orange-950/20 p-3 rounded-lg border border-orange-200 dark:border-orange-800">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs font-medium text-orange-700 dark:text-orange-400">Statistics</span>
-                        <Badge variant="outline" className="text-xs">2 modul</Badge>
-                      </div>
-                      <div className="text-sm text-muted-foreground">105 menit total</div>
-                    </div>
-                    <div className="bg-pink-50 dark:bg-pink-950/20 p-3 rounded-lg border border-pink-200 dark:border-pink-800">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs font-medium text-pink-700 dark:text-pink-400">Trigonometry</span>
-                        <Badge variant="outline" className="text-xs">2 modul</Badge>
-                      </div>
-                      <div className="text-sm text-muted-foreground">130 menit total</div>
-                    </div>
-                    <div className="bg-indigo-50 dark:bg-indigo-950/20 p-3 rounded-lg border border-indigo-200 dark:border-indigo-800">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs font-medium text-indigo-700 dark:text-indigo-400">Logic</span>
-                        <Badge variant="outline" className="text-xs">2 modul</Badge>
-                      </div>
-                      <div className="text-sm text-muted-foreground">105 menit total</div>
-                    </div>
-                  </div>
-
-                  {/* Module Completion Stats */}
-                  <div className="mt-4 pt-4 border-t">
-                    <div className="text-sm font-medium mb-3">Engagement Pembelajaran</div>
-                    <div className="space-y-3">
-                      <div className="flex items-center gap-3">
-                        <CheckCircle2 className="w-4 h-4 text-green-500" />
-                        <div className="flex-1">
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-sm text-muted-foreground">Modul diselesaikan</span>
-                            <span className="text-sm font-semibold">67%</span>
+                {myClasses.length > 0 ? (
+                  <div className="space-y-3">
+                    {myClasses.map((cls) => (
+                      <div
+                        key={cls.classId}
+                        className="p-4 bg-gradient-to-r from-primary/5 to-purple/5 rounded-lg border border-primary/20"
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <div>
+                            <h4 className="font-semibold">{cls.className}</h4>
+                            <p className="text-sm text-muted-foreground">
+                              {cls.grade} {cls.section} • {cls.role}
+                            </p>
                           </div>
-                          <Progress value={67} className="h-2" />
+                          <Badge variant="secondary">
+                            {cls.students.total}/{cls.students.max} siswa
+                          </Badge>
                         </div>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <PlayCircle className="w-4 h-4 text-blue-500" />
-                        <div className="flex-1">
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-sm text-muted-foreground">Video ditonton</span>
-                            <span className="text-sm font-semibold">82%</span>
-                          </div>
-                          <Progress value={82} className="h-2" />
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          {cls.subjects.length > 0 ? (
+                            cls.subjects.map((subject, idx) => (
+                              <Badge key={idx} variant="outline" className="text-xs">
+                                {subject}
+                              </Badge>
+                            ))
+                          ) : (
+                            <Badge variant="outline" className="text-xs">
+                              {cls.role}
+                            </Badge>
+                          )}
                         </div>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <Target className="w-4 h-4 text-purple-500" />
-                        <div className="flex-1">
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-sm text-muted-foreground">Latihan dikerjakan</span>
-                            <span className="text-sm font-semibold">73%</span>
-                          </div>
-                          <Progress value={73} className="h-2" />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Top Modules */}
-                  <div className="mt-4 pt-4 border-t">
-                    <div className="text-sm font-medium mb-3">Modul Terpopuler</div>
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between p-2 bg-muted/30 rounded">
-                        <div>
-                          <div className="text-sm font-medium">Persamaan Linear</div>
-                          <div className="text-xs text-muted-foreground">45 siswa • 89% completion</div>
-                        </div>
-                        <Award className="w-4 h-4 text-yellow-500" />
-                      </div>
-                      <div className="flex items-center justify-between p-2 bg-muted/30 rounded">
-                        <div>
-                          <div className="text-sm font-medium">Segitiga & Pythagoras</div>
-                          <div className="text-xs text-muted-foreground">42 siswa • 86% completion</div>
-                        </div>
-                        <Award className="w-4 h-4 text-gray-400" />
-                      </div>
-                      <div className="flex items-center justify-between p-2 bg-muted/30 rounded">
-                        <div>
-                          <div className="text-sm font-medium">Mean/Median/Modus</div>
-                          <div className="text-xs text-muted-foreground">38 siswa • 81% completion</div>
-                        </div>
-                        <Award className="w-4 h-4 text-amber-600" />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Early Warning System */}
-            {/* Early Warning System */}
-            <Card className="animate-fade-in">
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="text-xl flex items-center gap-2">
-                      <AlertTriangle className="w-5 h-5 text-destructive" />
-                      Sistem Peringatan Dini
-                    </CardTitle>
-                    <CardDescription>
-                      Siswa yang memerlukan perhatian khusus
-                    </CardDescription>
-                  </div>
-                  <Badge variant="destructive">{riskStudents.length} Siswa</Badge>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Nama</TableHead>
-                      <TableHead>Kelas</TableHead>
-                      <TableHead>Penguasaan</TableHead>
-                      <TableHead>Fokus Skill</TableHead>
-                      <TableHead>Risiko</TableHead>
-                      <TableHead>Aksi</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {riskStudents.map((student) => (
-                      <TableRow key={student.id}>
-                        <TableCell className="font-medium">
-                          <div className="flex items-center gap-2">
-                            <span className="text-2xl">{student.avatar}</span>
-                            {student.name}
-                          </div>
-                        </TableCell>
-                        <TableCell>{student.class}</TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <div className="text-lg font-semibold">
-                              {getOverallMastery(student)}%
+                        <div className="grid grid-cols-2 gap-3 mt-3">
+                          <div className="text-center p-2 bg-background rounded border">
+                            <div className="text-xs text-muted-foreground">Rata-rata XP</div>
+                            <div className="text-lg font-bold text-primary">
+                              {cls.performance.averageXP.toFixed(0)}
                             </div>
                           </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className="text-xs">
-                            {activeSkillTitle}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={student.riskLevel === 'high' ? 'destructive' : 'default'}>
-                            {student.riskLevel === 'high' ? 'Tinggi' : 'Sedang'}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Dialog>
-                            <DialogTrigger asChild>
-                              <Button 
-                                size="sm" 
-                                variant="outline"
-                                onClick={() => setSelectedStudent(student.id)}
-                              >
-                                <Bell className="w-4 h-4 mr-2" />
-                                Intervensi
-                              </Button>
-                            </DialogTrigger>
-                            <DialogContent>
-                              <DialogHeader>
-                                <DialogTitle>Kirim Intervensi</DialogTitle>
-                                <DialogDescription>
-                                  Pilih jenis intervensi untuk {student.name}
-                                </DialogDescription>
-                              </DialogHeader>
-                              <div className="space-y-4 py-4">
-                                <div className="space-y-2">
-                                  <Label>Jenis Intervensi</Label>
-                                  <Select value={interventionType} onValueChange={setInterventionType}>
-                                    <SelectTrigger>
-                                      <SelectValue placeholder="Pilih jenis intervensi" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="remedial">Remedial Khusus</SelectItem>
-                                      <SelectItem value="tutoring">Bimbingan 1-on-1</SelectItem>
-                                      <SelectItem value="peer">Peer Tutoring</SelectItem>
-                                      <SelectItem value="parent">Komunikasi Orang Tua</SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                </div>
-                                <div className="space-y-2">
-                                  <Label htmlFor="intervention-date">Tenggat (opsional)</Label>
-                                  <div className="relative">
-                                    <Calendar className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                                    <Input
-                                      id="intervention-date"
-                                      type="date"
-                                      value={dueDate}
-                                      onChange={(event) => setDueDate(event.target.value)}
-                                      className="pl-9"
-                                    />
-                                  </div>
-                                </div>
-                                <div className="space-y-2">
-                                  <Label>Catatan</Label>
-                                  <Textarea
-                                    value={interventionNote}
-                                    onChange={(e) => setInterventionNote(e.target.value)}
-                                    placeholder="Tulis catatan atau instruksi khusus..."
-                                    rows={4}
-                                  />
-                                </div>
-                                <Button onClick={handleSendIntervention} className="w-full">
-                                  Kirim Intervensi
-                                </Button>
-                              </div>
-                            </DialogContent>
-                          </Dialog>
-                        </TableCell>
-                      </TableRow>
+                          <div className="text-center p-2 bg-background rounded border">
+                            <div className="text-xs text-muted-foreground">Rata-rata Level</div>
+                            <div className="text-lg font-bold text-purple-600">
+                              {cls.performance.averageLevel.toFixed(1)}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="mt-3">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-xs text-muted-foreground">Kapasitas Kelas</span>
+                            <span className="text-xs font-semibold">{cls.students.percentage}%</span>
+                          </div>
+                          <Progress value={cls.students.percentage} className="h-2" />
+                        </div>
+                      </div>
                     ))}
-                  </TableBody>
-                </Table>
+                  </div>
+                ) : (
+                  <div className="text-center py-6 text-muted-foreground">
+                    <Users className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                    <p>Belum ada kelas yang diajar</p>
+                    <p className="text-xs">Hubungi admin sekolah untuk ditugaskan ke kelas</p>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
-            {/* All Students Performance */}
+            {/* Students Performance Table */}
             <Card className="animate-fade-in">
               <CardHeader>
-                <CardTitle className="text-xl flex items-center gap-2">
-                  <Users className="w-5 h-5" />
-                  Performa Semua Siswa
-                </CardTitle>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="text-xl flex items-center gap-2">
+                      <Users className="w-5 w-5 text-primary" />
+                      Daftar Siswa
+                    </CardTitle>
+                    <CardDescription>
+                      Siswa yang Anda ajar dan performanya
+                    </CardDescription>
+                  </div>
+                  <Badge variant="secondary">{myStudents.length} Siswa</Badge>
+                </div>
               </CardHeader>
               <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Nama</TableHead>
-                      <TableHead>Aljabar</TableHead>
-                      <TableHead>Geometri</TableHead>
-                      <TableHead>Statistika</TableHead>
-                      <TableHead>Trigonometri</TableHead>
-                      <TableHead>Rata-rata</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {mockStudents.map((student) => (
-                      <TableRow key={student.id}>
-                        <TableCell className="font-medium">
-                          {student.avatar} {student.name}
-                        </TableCell>
-                        <TableCell>{student.masteryPerTopic.algebra}%</TableCell>
-                        <TableCell>{student.masteryPerTopic.geometry}%</TableCell>
-                        <TableCell>{student.masteryPerTopic.statistics}%</TableCell>
-                        <TableCell>{student.masteryPerTopic.trigonometry}%</TableCell>
-                        <TableCell>
-                          <span className="font-semibold">{getOverallMastery(student)}%</span>
-                        </TableCell>
+                {myStudents.length > 0 ? (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Nama</TableHead>
+                        <TableHead>Kelas</TableHead>
+                        <TableHead className="text-center">XP</TableHead>
+                        <TableHead className="text-center">Lessons</TableHead>
+                        <TableHead className="text-center">Rata-rata</TableHead>
+                        <TableHead className="text-center">Status</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {myStudents.slice(0, 10).map((student) => (
+                        <TableRow key={student.studentId}>
+                            <TableCell className="font-medium">{student.name}</TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {student.className}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Badge variant="outline">{student.xp.toLocaleString()}</Badge>
+                          </TableCell>
+                          <TableCell className="text-center">{student.completedLessons}</TableCell>
+                          <TableCell className="text-center">
+                            <Badge
+                              variant={student.averageScore >= 80 ? "default" : "outline"}
+                              className={
+                                student.averageScore >= 80
+                                  ? "bg-green-600"
+                                  : student.averageScore >= 60
+                                  ? "bg-yellow-600"
+                                  : "bg-red-600"
+                              }
+                            >
+                              {student.averageScore.toFixed(1)}%
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {student.averageScore >= 75 ? (
+                              <Badge variant="default" className="bg-green-600">
+                                Baik
+                              </Badge>
+                            ) : student.averageScore >= 60 ? (
+                              <Badge variant="secondary" className="bg-yellow-600">
+                                Cukup
+                              </Badge>
+                            ) : (
+                              <Badge variant="destructive">
+                                Perlu Perhatian
+                              </Badge>
+                            )}
+                          </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
+                ) : (
+                  <div className="text-center py-6 text-muted-foreground">
+                    <Users className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                    <p>Belum ada siswa</p>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
@@ -650,81 +637,85 @@ const TeacherDashboard = () => {
                 <CardDescription>XP dan streak terkini untuk pemantauan cepat.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
-                {mockStudents.map((student) => (
-                  <div key={student.id} className="rounded-lg border p-3">
-                    <div className="flex items-center justify-between">
-                      <p className="font-semibold">{student.avatar} {student.name}</p>
-                      <Badge variant="outline" className="text-xs">Level {student.level}</Badge>
-                    </div>
-                    <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-muted-foreground">
-                      <div className="flex items-center gap-2">
-                        <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-primary text-[11px] font-semibold">XP</span>
-                        {student.xp}
+                {myStudents.length > 0 ? (
+                  myStudents.slice(0, 5).map((student) => (
+                    <div key={student.studentId} className="rounded-lg border p-3">
+                      <div className="flex items-center justify-between">
+                        <p className="font-semibold">{student.name}</p>
+                        <Badge variant="outline" className="text-xs">
+                          {student.xp.toLocaleString()} XP
+                        </Badge>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-warning/20 text-warning text-[11px] font-semibold">🔥</span>
-                        Streak {student.streak} hari
+                      <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+                        <div className="flex items-center gap-2">
+                          <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-primary text-[11px] font-semibold">📚</span>
+                          {student.completedLessons} lessons
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-warning/20 text-warning text-[11px] font-semibold">📊</span>
+                          {student.averageScore.toFixed(0)}% avg
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  ))
+                ) : (
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    Belum ada data siswa
+                  </p>
+                )}
               </CardContent>
             </Card>
 
             <Card className="animate-fade-in">
               <CardHeader>
-                <CardTitle className="text-lg">Insight Aktivitas</CardTitle>
-                <CardDescription>Event terbaru dari sistem gamifikasi.</CardDescription>
+                <CardTitle className="text-lg">Aktivitas Siswa Terbaru</CardTitle>
+                <CardDescription>Aktivitas pembelajaran siswa dari kelas Anda</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
                 {telemetryEvents.length === 0 ? (
                   <p className="text-sm text-muted-foreground">Belum ada aktivitas terbaru yang terekam.</p>
                 ) : (
-                  telemetryEvents.slice(0, 5).map((event) => {
-                    const xpEarned = typeof event.metadata.xpEarned === "number" ? event.metadata.xpEarned : undefined;
-                    const xpBonus = typeof event.metadata.xpBonus === "number" ? event.metadata.xpBonus : undefined;
-                    const streak = typeof event.metadata.streak === "number" ? event.metadata.streak : undefined;
-                    const lessonId = typeof event.metadata.lessonId === "string" ? event.metadata.lessonId : undefined;
-                    const skillId = typeof event.metadata.skillId === "string" ? event.metadata.skillId : undefined;
-                    const unitId = typeof event.metadata.unitId === "string" ? event.metadata.unitId : undefined;
-                    const detailLabel = xpEarned != null
-                      ? `XP +${xpEarned}`
-                      : xpBonus != null
-                      ? `Bonus +${xpBonus} XP`
-                      : lessonId
-                      ? `Lesson ${lessonId}`
-                      : skillId
-                      ? `Skill ${skillId}`
-                      : unitId
-                      ? `Unit ${unitId}`
-                      : "Aktivitas tercatat";
-                    return (
-                      <div key={event.id} className="rounded-lg border p-3">
-                        <div className="flex items-center justify-between">
-                          <p className="text-sm font-semibold">{event.studentName}</p>
-                          <Badge variant="outline" className="text-xs">
-                            {telemetryLabels[event.type]}
-                          </Badge>
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          {new Date(event.timestamp).toLocaleString("id-ID")}
-                        </p>
-                        <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
-                          <span className="flex items-center gap-1">
-                            {event.type === "reward_claimed" || event.type === "daily_goal_claimed" ? (
-                              <Sparkles className="h-3 w-3 text-primary" />
-                            ) : (
-                              <Zap className="h-3 w-3 text-warning" />
-                            )}
-                            {detailLabel}
-                          </span>
-                          {streak != null && (
-                            <span>Streak {streak}</span>
-                          )}
-                        </div>
+                  telemetryEvents.slice(0, 8).map((event: any) => (
+                    <div key={event.id} className="rounded-lg border p-3">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-semibold">{event.studentName}</p>
+                        <Badge variant="outline" className="text-xs">
+                          {event.type === "xp_gained" 
+                            ? "XP Didapat" 
+                            : event.type === "lesson_completed"
+                            ? "Lesson Selesai"
+                            : "Aktivitas"}
+                        </Badge>
                       </div>
-                    );
-                  })
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {event.description}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {new Date(event.timestamp).toLocaleString("id-ID")}
+                      </p>
+                      <div className="mt-2 flex items-center justify-between text-xs">
+                        <span className="flex items-center gap-2 text-muted-foreground">
+                          <Sparkles className="h-3 w-3 text-primary" />
+                          <span>Total: {event.totalXP.toLocaleString()} XP</span>
+                          {event.xpEarned && (
+                            <span className="text-green-600 font-semibold">
+                              +{event.xpEarned} XP
+                            </span>
+                          )}
+                        </span>
+                        {event.streakDays && (
+                          <span className="flex items-center gap-1 text-orange-600">
+                            🔥 Streak {event.streakDays} hari
+                          </span>
+                        )}
+                      </div>
+                      <div className="mt-2 flex items-center gap-2">
+                        <Badge variant="secondary" className="text-xs">
+                          Level {event.studentLevel}
+                        </Badge>
+                      </div>
+                    </div>
+                  ))
                 )}
               </CardContent>
             </Card>
@@ -785,6 +776,7 @@ const TeacherDashboard = () => {
             </Card>
           </div>
         </div>
+          )}
         </div>
       </main>
     </SidebarProvider>

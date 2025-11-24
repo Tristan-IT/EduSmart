@@ -24,13 +24,17 @@ interface Template {
 }
 
 interface TemplatePreviewModalProps {
-  template: Template;
+  template: Template | null;
   isOpen: boolean;
   onClose: () => void;
-  onUse: () => void;
+  onUse?: () => void;
 }
 
 export default function TemplatePreviewModal({ template, isOpen, onClose, onUse }: TemplatePreviewModalProps) {
+  // Early return if no template
+  if (!template) {
+    return null;
+  }
   const getDifficultyColor = (difficulty: string) => {
     switch (difficulty) {
       case "Mudah":

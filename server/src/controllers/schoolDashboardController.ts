@@ -1,5 +1,3 @@
-import { Response, NextFunction } from "express";
-import { AuthenticatedRequest } from "../middleware/authenticate.js";
 import * as schoolAnalyticsService from "../services/schoolAnalyticsService.js";
 
 /**
@@ -343,6 +341,165 @@ export const getTopPerformers = async (
       success: true,
       message: "Top performers retrieved successfully",
       data: topPerformers,
+    });
+  } catch (error: any) {
+    res.status(400).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+/**
+ * Get school alerts
+ * GET /api/school-dashboard/alerts
+ */
+export const getSchoolAlerts = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { schoolId } = req.query;
+    const ownerId = req.user?.id;
+    const userRole = req.user?.role;
+
+    // Authorization check
+    if (userRole !== "school_owner") {
+      return res.status(403).json({
+        success: false,
+        message: "Forbidden: Only school owners can access alerts",
+      });
+    }
+
+    if (!schoolId || typeof schoolId !== "string") {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required query parameter: schoolId",
+      });
+    }
+
+    if (!ownerId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized: User not authenticated",
+      });
+    }
+
+    // Get alerts
+    const alerts = await schoolAnalyticsService.getSchoolAlerts(schoolId, ownerId);
+
+    res.status(200).json({
+      success: true,
+      message: "School alerts retrieved successfully",
+      data: alerts,
+    });
+  } catch (error: any) {
+    res.status(400).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+/**
+ * Get school performance metrics
+ * GET /api/school-dashboard/performance
+ */
+export const getSchoolPerformanceMetrics = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { schoolId } = req.query;
+    const ownerId = req.user?.id;
+    const userRole = req.user?.role;
+
+    // Authorization check
+    if (userRole !== "school_owner") {
+      return res.status(403).json({
+        success: false,
+        message: "Forbidden: Only school owners can access performance metrics",
+      });
+    }
+
+    if (!schoolId || typeof schoolId !== "string") {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required query parameter: schoolId",
+      });
+    }
+
+    if (!ownerId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized: User not authenticated",
+      });
+    }
+
+    // Get performance metrics
+    const performance = await schoolAnalyticsService.getSchoolPerformanceMetrics(schoolId, ownerId);
+
+    res.status(200).json({
+      success: true,
+      message: "School performance metrics retrieved successfully",
+      data: performance,
+    });
+  } catch (error: any) {
+    res.status(400).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+/**
+ * Get recent activity
+ * GET /api/school-dashboard/recent-activity
+ */
+export const getRecentActivity = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { schoolId, limit } = req.query;
+    const ownerId = req.user?.id;
+    const userRole = req.user?.role;
+
+    // Authorization check
+    if (userRole !== "school_owner") {
+      return res.status(403).json({
+        success: false,
+        message: "Forbidden: Only school owners can access recent activity",
+      });
+    }
+
+    if (!schoolId || typeof schoolId !== "string") {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required query parameter: schoolId",
+      });
+    }
+
+    if (!ownerId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized: User not authenticated",
+      });
+    }
+
+    // Parse limit parameter
+    const limitCount = limit && typeof limit === "string" ? parseInt(limit, 10) : 5;
+
+    // Get recent activity
+    const activities = await schoolAnalyticsService.getRecentActivity(schoolId, ownerId, limitCount);
+
+    res.status(200).json({
+      success: true,
+      message: "Recent activity retrieved successfully",
+      data: activities,
     });
   } catch (error: any) {
     res.status(400).json({

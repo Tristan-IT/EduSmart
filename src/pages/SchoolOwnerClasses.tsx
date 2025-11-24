@@ -231,7 +231,26 @@ const SchoolOwnerClasses = () => {
     try {
       setLoading(true);
       const token = localStorage.getItem("token");
-      const schoolId = localStorage.getItem("schoolId");
+      let schoolId = localStorage.getItem("schoolId");
+      
+      if (!schoolId) {
+        // Fallback: get from user profile
+        const userResponse = await fetch("http://localhost:5000/api/school-owner/profile", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        
+        if (userResponse.ok) {
+          const userData = await userResponse.json();
+          schoolId = userData.schoolId;
+        }
+      }
+      
+      if (!schoolId) {
+        setError("School ID tidak ditemukan. Silakan login kembali.");
+        return;
+      }
       
       const response = await fetch(`http://localhost:5000/api/school-dashboard/classes?schoolId=${schoolId}`, {
         headers: {
@@ -242,8 +261,17 @@ const SchoolOwnerClasses = () => {
       if (!response.ok) throw new Error("Failed to fetch classes");
 
       const data = await response.json();
-      setClasses(data.data?.classes || data.classes || []);
-      setFilteredClasses(data.data?.classes || data.classes || []);
+      
+      // Transform API response to match frontend interface
+      const transformedClasses = (data.data?.classes || data.classes || []).map((cls: any) => ({
+        ...cls,
+        studentCount: cls.students?.total || 0,
+        totalStudents: cls.students?.total || 0,
+        maxCapacity: cls.maxStudents || cls.students?.max || 0,
+      }));
+      
+      setClasses(transformedClasses);
+      setFilteredClasses(transformedClasses);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -346,9 +374,27 @@ const SchoolOwnerClasses = () => {
   const handleAddClass = async (formData: any) => {
     try {
       const token = localStorage.getItem("token");
-      const schoolId = localStorage.getItem("schoolId");
+      let schoolId = localStorage.getItem("schoolId");
+      
+      if (!schoolId) {
+        // Fallback: get from user profile
+        const userResponse = await fetch("http://localhost:5000/api/school-owner/profile", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        
+        if (userResponse.ok) {
+          const userData = await userResponse.json();
+          schoolId = userData.schoolId;
+        }
+      }
+      
+      if (!schoolId) {
+        throw new Error("School ID tidak ditemukan. Silakan login kembali.");
+      }
 
-      const response = await fetch("http://localhost:5000/api/classes", {
+      const response = await fetch("http://localhost:5000/api/classes/create", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -488,7 +534,25 @@ const SchoolOwnerClasses = () => {
   const handleBulkCreate = async (bulkData: any) => {
     try {
       const token = localStorage.getItem("token");
-      const schoolId = localStorage.getItem("schoolId");
+      let schoolId = localStorage.getItem("schoolId");
+      
+      if (!schoolId) {
+        // Fallback: get from user profile
+        const userResponse = await fetch("http://localhost:5000/api/school-owner/profile", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        
+        if (userResponse.ok) {
+          const userData = await userResponse.json();
+          schoolId = userData.schoolId;
+        }
+      }
+      
+      if (!schoolId) {
+        throw new Error("School ID tidak ditemukan. Silakan login kembali.");
+      }
 
       const response = await fetch("http://localhost:5000/api/classes/bulk", {
         method: "POST",

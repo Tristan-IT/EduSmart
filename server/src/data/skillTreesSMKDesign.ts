@@ -3,7 +3,36 @@
  * Kelas 10-12, Total: ~60 nodes (30 DKV + 30 BD)
  */
 
-import { SkillTreeNode } from "./skillTreesSMKTech";
+export interface SkillTreeNode {
+  id: string;
+  nodeId: string;
+  name: string;
+  description: string;
+  topicCode: string;
+  subject: string;
+  gradeLevel: string;
+  classNumber: number;
+  semester: number;
+  curriculum: string;
+  kompetensiDasar?: string;
+  icon: string;
+  color: string;
+  level: number;
+  xpRequired: number;
+  prerequisites: string[];
+  rewards: {
+    xp: number;
+    gems: number;
+    hearts?: number;
+    badge?: string;
+    certificate?: string;
+  };
+  position: { x: number; y: number };
+  quizCount: number;
+  estimatedMinutes: number;
+  difficulty: string;
+  isCheckpoint: boolean;
+}
 
 // ============================================
 // SMK DKV - Kelas 10 (10 nodes)

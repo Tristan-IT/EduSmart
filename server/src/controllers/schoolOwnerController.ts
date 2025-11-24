@@ -292,7 +292,7 @@ export const registerSchoolOwner = async (req: Request, res: Response) => {
       role: owner.role,
       name: owner.name,
       email: owner.email,
-    });
+    }, "7d");
 
     return res.status(201).json({
       success: true,
@@ -379,10 +379,10 @@ export const loginSchoolOwner = async (req: Request, res: Response) => {
       role: owner.role,
       name: owner.name,
       email: owner.email,
-    });
+    }, "7d");
 
     // Get school data
-    const school = await SchoolModel.findById(owner.school);
+    const school = await SchoolModel.findById(owner.ownedSchool || owner.school);
 
     return res.status(200).json({
       success: true,

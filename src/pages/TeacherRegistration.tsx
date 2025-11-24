@@ -1,19 +1,22 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
+import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import { GraduationCap, Mail, Lock, User, Building2, Hash, BookOpen, Award, X, Users, BarChart3, Target } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { GraduationCap, Mail, Lock, User, Building2, Hash, BookOpen, Award, X, Users, BarChart3, Target, CheckCircle2 } from "lucide-react";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 import { fadeInUp, staggerContainer } from "@/lib/animations";
 
 const TeacherRegistration = () => {
   const navigate = useNavigate();
+  const { login } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [validatingSchool, setValidatingSchool] = useState(false);
@@ -31,30 +34,54 @@ const TeacherRegistration = () => {
   const [qualification, setQualification] = useState("");
   const [subjectInput, setSubjectInput] = useState("");
   const [subjects, setSubjects] = useState<string[]>([]);
+  
+  // Classes from school
+  const [availableClasses, setAvailableClasses] = useState<any[]>([]);
+  const [availableSubjects, setAvailableSubjects] = useState<any[]>([]);
+  const [selectedClassIds, setSelectedClassIds] = useState<string[]>([]);
+  const [loadingClasses, setLoadingClasses] = useState(false);
 
   const validateSchoolId = async (id: string) => {
     if (!id || id.length < 8) {
       setSchoolValid(false);
       setSchoolName("");
+      setAvailableClasses([]);
       return;
     }
 
     setValidatingSchool(true);
+    setLoadingClasses(true);
     try {
-      // Mock validation - in real app, call API to validate
-      // For now, accept any School ID starting with "SCH-"
-      if (id.startsWith("SCH-")) {
+      // Validate school exists and get classes
+      const classesResponse = await fetch(`http://localhost:5000/api/classes/public/school/${id}`);
+      const classesData = await classesResponse.json();
+
+      if (classesResponse.ok && classesData.success) {
         setSchoolValid(true);
-        setSchoolName("Sekolah Contoh"); // Mock school name
+        setSchoolName(classesData.data[0]?.schoolName || "Sekolah Valid");
+        setAvailableClasses(classesData.data || []);
+        
+        // Also load subjects for this school
+        const subjectsResponse = await fetch(`http://localhost:5000/api/subjects/public/school/${id}`);
+        const subjectsData = await subjectsResponse.json();
+        
+        if (subjectsResponse.ok && subjectsData.success) {
+          setAvailableSubjects(subjectsData.data || []);
+        }
       } else {
         setSchoolValid(false);
         setSchoolName("");
+        setAvailableClasses([]);
+        setAvailableSubjects([]);
       }
     } catch (err) {
       setSchoolValid(false);
       setSchoolName("");
+      setAvailableClasses([]);
+      setAvailableSubjects([]);
     } finally {
       setValidatingSchool(false);
+      setLoadingClasses(false);
     }
   };
 
@@ -63,10 +90,9 @@ const TeacherRegistration = () => {
     validateSchoolId(value);
   };
 
-  const addSubject = () => {
-    if (subjectInput.trim() && !subjects.includes(subjectInput.trim())) {
-      setSubjects([...subjects, subjectInput.trim()]);
-      setSubjectInput("");
+  const addSubject = (subjectName: string) => {
+    if (subjectName && !subjects.includes(subjectName)) {
+      setSubjects([...subjects, subjectName]);
     }
   };
 
@@ -99,6 +125,11 @@ const TeacherRegistration = () => {
       return;
     }
 
+    if (selectedClassIds.length === 0) {
+      setError("Pilih minimal 1 kelas yang akan diajar");
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -113,11 +144,10 @@ const TeacherRegistration = () => {
           password,
           schoolId,
           phone: phone || undefined,
-          teacherProfile: {
-            employeeId: employeeId || undefined,
-            subjects,
-            qualification: qualification || undefined,
-          },
+          employeeId: employeeId || undefined,
+          subjects,
+          classIds: selectedClassIds,
+          qualification: qualification || undefined,
         }),
       });
 
@@ -128,13 +158,25 @@ const TeacherRegistration = () => {
         throw new Error(data.message || data.error || "Registrasi gagal");
       }
 
-      // Success
-      if (data.data.token) {
-        localStorage.setItem("token", data.data.token);
-      }
+      // Success - login to AuthContext
+      if (data.token && data.user) {
+        // Store in AuthContext (will also save to localStorage)
+        login({
+          token: data.token,
+          user: {
+            id: data.user.id || data.user._id,
+            name: data.user.name,
+            email: data.user.email,
+            role: data.user.role,
+            school: data.user.school,
+          },
+        });
 
-      // Redirect to teacher dashboard
-      navigate("/teacher-dashboard");
+        // Redirect to teacher dashboard
+        navigate("/teacher-dashboard");
+      } else {
+        throw new Error("Token atau user data tidak ditemukan");
+      }
     } catch (err: any) {
       setError(err.message || "Terjadi kesalahan saat registrasi");
     } finally {
@@ -263,6 +305,23 @@ const TeacherRegistration = () => {
                     </Alert>
                   )}
 
+                  {/* Instruction Card */}
+                  <Alert className="bg-gradient-to-r from-blue-50 via-teal-50 to-cyan-50 border-2 border-teal-300">
+                    <Building2 className="h-5 w-5 text-teal-600" />
+                    <AlertDescription className="ml-2">
+                      <p className="font-semibold text-teal-900 mb-2 text-base">📋 Langkah Registrasi:</p>
+                      <ol className="text-sm text-teal-800 space-y-1 ml-4 list-decimal">
+                        <li><strong>Masukkan School ID</strong> yang diberikan oleh sekolah Anda</li>
+                        <li><strong>Pilih Mata Pelajaran</strong> yang akan Anda ajar</li>
+                        <li><strong>Pilih Kelas</strong> yang akan Anda tangani</li>
+                        <li><strong>Lengkapi Data Pribadi</strong> dan submit registrasi</li>
+                      </ol>
+                      <p className="text-xs text-teal-600 mt-2 italic">
+                        💡 Belum punya School ID? Hubungi admin sekolah Anda.
+                      </p>
+                    </AlertDescription>
+                  </Alert>
+
                   {/* School ID Validation Section */}
                   <div className="space-y-4 p-6 bg-gradient-to-br from-teal-50 to-cyan-50 rounded-lg border-2 border-teal-200">
                     <div className="flex items-center justify-between mb-2">
@@ -322,6 +381,110 @@ const TeacherRegistration = () => {
                       )}
                     </div>
                   </div>
+
+                  {/* Class Selection */}
+                  {schoolValid && availableClasses.length > 0 && (
+                    <div className="space-y-4 p-6 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg border-2 border-blue-200">
+                      <h3 className="text-lg font-semibold flex items-center gap-2">
+                        <Users className="h-5 w-5 text-blue-600" />
+                        Pilih Kelas yang Diajar <span className="text-destructive">*</span>
+                      </h3>
+                      <p className="text-sm text-gray-600">
+                        Pilih kelas-kelas yang akan Anda ajar di sekolah ini
+                      </p>
+
+                      {loadingClasses ? (
+                        <div className="flex items-center gap-2 text-sm text-gray-600">
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                          Memuat daftar kelas...
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-96 overflow-y-auto p-1">
+                          {availableClasses.map((cls) => {
+                            const isSelected = selectedClassIds.includes(cls.classId);
+                            const percentage = cls.maxStudents > 0 
+                              ? Math.round(((cls.currentStudents || 0) / cls.maxStudents) * 100) 
+                              : 0;
+                            const isFull = percentage >= 100;
+                            
+                            return (
+                              <label
+                                key={cls.classId}
+                                className={`relative flex items-center gap-3 p-4 rounded-lg border cursor-pointer transition-all ${
+                                  isSelected
+                                    ? 'border-blue-500 bg-blue-100 shadow-sm'
+                                    : 'border-gray-300 bg-white hover:border-blue-400 hover:shadow-sm'
+                                }`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setSelectedClassIds([...selectedClassIds, cls.classId]);
+                                    } else {
+                                      setSelectedClassIds(selectedClassIds.filter(id => id !== cls.classId));
+                                    }
+                                  }}
+                                  className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                                />
+                                
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center justify-between gap-2 mb-1">
+                                    <p className="font-medium text-sm text-gray-900 truncate">
+                                      {cls.displayName || cls.className}
+                                    </p>
+                                    {isFull && (
+                                      <span className="flex-shrink-0 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">
+                                        Penuh
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-2 text-xs text-gray-500">
+                                    <span className="font-mono">{cls.classId}</span>
+                                    <span>•</span>
+                                    <span className={`font-medium ${
+                                      isFull ? 'text-red-600' : percentage >= 80 ? 'text-orange-600' : 'text-green-600'
+                                    }`}>
+                                      {cls.currentStudents || 0}/{cls.maxStudents}
+                                    </span>
+                                  </div>
+                                </div>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {selectedClassIds.length > 0 && (
+                        <div className="flex items-center justify-between p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                          <p className="text-sm font-medium text-blue-900">
+                            <span className="inline-flex items-center justify-center w-5 h-5 mr-2 text-xs font-bold text-white bg-blue-600 rounded-full">
+                              {selectedClassIds.length}
+                            </span>
+                            Kelas dipilih
+                          </p>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setSelectedClassIds([])}
+                            className="text-xs text-blue-700 hover:text-blue-900 hover:bg-blue-100 h-7"
+                          >
+                            Bersihkan
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {schoolValid && availableClasses.length === 0 && !loadingClasses && (
+                    <Alert className="bg-yellow-50 border-yellow-200">
+                      <AlertDescription className="text-yellow-800">
+                        Belum ada kelas yang tersedia di sekolah ini. Hubungi admin sekolah untuk membuat kelas terlebih dahulu.
+                      </AlertDescription>
+                    </Alert>
+                  )}
 
                   {/* Personal Information */}
                   <div className="space-y-4">
@@ -454,52 +617,107 @@ const TeacherRegistration = () => {
                         </div>
                       </div>
 
-                      <div className="space-y-2 md:col-span-2">
-                        <Label htmlFor="subjects">
-                          Mata Pelajaran yang Diajar <span className="text-destructive">*</span>
-                        </Label>
-                        <div className="flex gap-2">
-                          <div className="relative flex-1">
-                            <BookOpen className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                            <Input
-                              id="subjects"
-                              type="text"
-                              placeholder="Contoh: Matematika, Fisika"
-                              value={subjectInput}
-                              onChange={(e) => setSubjectInput(e.target.value)}
-                              onKeyPress={(e) => {
-                                if (e.key === "Enter") {
-                                  e.preventDefault();
-                                  addSubject();
-                                }
-                              }}
-                              className="pl-10"
-                            />
-                          </div>
-                          <Button type="button" onClick={addSubject} variant="outline">
-                            Tambah
-                          </Button>
-                        </div>
-                        {subjects.length > 0 && (
-                          <div className="flex flex-wrap gap-2 mt-2">
-                            {subjects.map((subject) => (
-                              <Badge key={subject} variant="secondary" className="pl-3 pr-1">
-                                {subject}
-                                <button
-                                  type="button"
-                                  onClick={() => removeSubject(subject)}
-                                  className="ml-2 hover:bg-gray-300 rounded-full p-0.5"
+                      {/* Subject Selection - Same style as Class Selection */}
+                      {schoolValid && availableSubjects.length > 0 && (
+                        <div className="md:col-span-2 space-y-4 p-6 bg-gradient-to-br from-purple-50 to-pink-50 rounded-lg border-2 border-purple-200">
+                          <h3 className="text-lg font-semibold flex items-center gap-2">
+                            <BookOpen className="h-5 w-5 text-purple-600" />
+                            Pilih Mata Pelajaran yang Diajar <span className="text-destructive">*</span>
+                          </h3>
+                          <p className="text-sm text-gray-600">
+                            Pilih mata pelajaran yang akan Anda ajar di sekolah ini
+                          </p>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-96 overflow-y-auto p-1">
+                            {availableSubjects.map((subject) => {
+                              const isSelected = subjects.includes(subject.name);
+                              
+                              return (
+                                <Card
+                                  key={subject._id}
+                                  className={`p-4 cursor-pointer transition-all border-2 ${
+                                    isSelected
+                                      ? 'border-purple-500 bg-gradient-to-br from-purple-50 to-pink-50 shadow-md'
+                                      : 'border-gray-200 hover:border-purple-300 hover:shadow-sm'
+                                  }`}
+                                  onClick={() => {
+                                    if (isSelected) {
+                                      removeSubject(subject.name);
+                                    } else {
+                                      addSubject(subject.name);
+                                    }
+                                  }}
                                 >
-                                  <X className="h-3 w-3" />
-                                </button>
-                              </Badge>
-                            ))}
+                                  <div className="space-y-2">
+                                    <div className="flex items-start justify-between">
+                                      <div>
+                                        <h4 className="font-semibold text-sm">
+                                          {subject.name}
+                                        </h4>
+                                        <p className="text-xs text-muted-foreground">
+                                          {subject.code}
+                                        </p>
+                                      </div>
+                                      {isSelected && (
+                                        <CheckCircle2 className="h-5 w-5 text-purple-600" />
+                                      )}
+                                    </div>
+                                    {subject.category && (
+                                      <Badge
+                                        variant="secondary"
+                                        className="text-xs"
+                                      >
+                                        {subject.category}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                </Card>
+                              );
+                            })}
                           </div>
-                        )}
-                        <p className="text-sm text-muted-foreground">
-                          Tambahkan mata pelajaran satu per satu
-                        </p>
-                      </div>
+
+                          {subjects.length > 0 && (
+                            <div className="flex items-center justify-between p-3 bg-purple-50 border border-purple-200 rounded-lg">
+                              <p className="text-sm font-medium text-purple-900">
+                                <span className="inline-flex items-center justify-center w-5 h-5 mr-2 text-xs font-bold text-white bg-purple-600 rounded-full">
+                                  {subjects.length}
+                                </span>
+                                Mata pelajaran dipilih
+                              </p>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setSubjects([])}
+                                className="text-purple-700 hover:text-purple-900 hover:bg-purple-100"
+                              >
+                                <X className="h-4 w-4 mr-1" />
+                                Bersihkan semua
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {schoolValid && availableSubjects.length === 0 && (
+                        <div className="md:col-span-2 p-8 border-2 border-dashed border-gray-300 rounded-lg text-center bg-gray-50">
+                          <BookOpen className="h-12 w-12 text-gray-400 mx-auto mb-3" />
+                          <p className="text-sm font-medium text-gray-700 mb-1">Belum Ada Mata Pelajaran</p>
+                          <p className="text-xs text-gray-500">
+                            Hubungi admin sekolah untuk menambahkan mata pelajaran terlebih dahulu
+                          </p>
+                        </div>
+                      )}
+
+                      {!schoolValid && schoolId && (
+                        <div className="md:col-span-2 p-8 border-2 border-dashed border-orange-300 rounded-lg text-center bg-orange-50">
+                          <BookOpen className="h-12 w-12 text-orange-400 mx-auto mb-3" />
+                          <p className="text-sm font-medium text-orange-700 mb-1">Masukkan School ID yang Valid</p>
+                          <p className="text-xs text-orange-600">
+                            Mata pelajaran dan kelas akan muncul setelah School ID tervalidasi
+                          </p>
+                        </div>
+                      )}
                     </div>
                   </div>
 

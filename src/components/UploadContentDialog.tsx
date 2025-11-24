@@ -52,11 +52,16 @@ export function UploadContentDialog({ isOpen, onClose, onUpload }: UploadContent
     try {
       setLoadingSubjects(true);
       const response = await subjectApi.getAll();
-      if (response.success) {
+      if (response.success && Array.isArray(response.subjects)) {
         setSubjects(response.subjects);
+      } else {
+        console.warn("No subjects returned or invalid format:", response);
+        setSubjects([]);
       }
     } catch (error) {
       console.error("Failed to load subjects:", error);
+      setSubjects([]);
+      toast.error("Gagal memuat mata pelajaran");
     } finally {
       setLoadingSubjects(false);
     }
@@ -139,17 +144,23 @@ export function UploadContentDialog({ isOpen, onClose, onUpload }: UploadContent
                 <SelectValue placeholder={loadingSubjects ? "Memuat..." : "Pilih mata pelajaran"} />
               </SelectTrigger>
               <SelectContent>
-                {subjects.map((subject) => (
-                  <SelectItem key={subject._id} value={subject._id}>
-                    <div className="flex items-center gap-2">
-                      <div 
-                        className="w-2 h-2 rounded-full" 
-                        style={{ backgroundColor: subject.color }}
-                      />
-                      {subject.name}
-                    </div>
+                {subjects && subjects.length > 0 ? (
+                  subjects.map((subject) => (
+                    <SelectItem key={subject._id} value={subject._id}>
+                      <div className="flex items-center gap-2">
+                        <div 
+                          className="w-2 h-2 rounded-full" 
+                          style={{ backgroundColor: subject.color }}
+                        />
+                        {subject.name}
+                      </div>
+                    </SelectItem>
+                  ))
+                ) : (
+                  <SelectItem value="no-subjects" disabled>
+                    Tidak ada mata pelajaran tersedia
                   </SelectItem>
-                ))}
+                )}
               </SelectContent>
             </Select>
           </div>

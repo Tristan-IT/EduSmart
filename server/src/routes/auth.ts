@@ -13,6 +13,12 @@ export const authRouter = Router();
 
 authRouter.post("/register", registerValidation, register);
 authRouter.post("/login", loginValidation, login);
+
+// Specific login routes for different user types
+authRouter.post("/school-owner/login", loginValidation, login);
+authRouter.post("/teacher/login", loginValidation, login);
+authRouter.post("/student/login", loginValidation, login);
+
 authRouter.get("/me", authenticate, currentUser as any);
 
 authRouter.get("/google", (req: Request, res: Response, next: NextFunction) => {

@@ -6,6 +6,8 @@ import {
   getUnlockedCount,
   getRecentlyUnlocked,
 } from "../services/achievementService.js";
+import { getMyAchievements, getAllAchievements as getAllAchievementsController } from "../controllers/achievementController.js";
+import { authenticate } from "../middleware/authenticate.js";
 
 const router = Router();
 
@@ -81,5 +83,17 @@ router.get("/recent", async (req: Request, res: Response) => {
     });
   }
 });
+
+/**
+ * Get current student's unlocked achievements
+ * GET /api/achievements/student/me
+ */
+router.get("/student/me", authenticate, getMyAchievements);
+
+/**
+ * Get all achievements for current student (locked and unlocked)
+ * GET /api/achievements/student/all
+ */
+router.get("/student/all", authenticate, getAllAchievementsController);
 
 export default router;

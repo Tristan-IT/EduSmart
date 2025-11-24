@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { AppSidebar } from "@/components/AppSidebar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -41,6 +43,16 @@ import {
   RefreshCw,
   AlertCircle,
   CheckCircle2,
+  Download,
+  Upload,
+  MoreVertical,
+  Copy,
+  Archive,
+  TrendingUp,
+  Users,
+  GraduationCap,
+  BookMarked,
+  Star,
 } from "lucide-react";
 import { fadeInUp, staggerContainer } from "@/lib/animations";
 
@@ -193,9 +205,31 @@ const SubjectManagement = () => {
       setError("");
       setSuccess("");
 
-      // Validation
-      if (!formData.code || !formData.name || formData.schoolTypes.length === 0 || formData.grades.length === 0) {
-        setError("Kode, nama, jenis sekolah, dan kelas wajib diisi");
+      // Enhanced validation with specific messages
+      if (!formData.code) {
+        setError("❌ Kode mata pelajaran wajib diisi");
+        return;
+      }
+      if (formData.code.length < 2) {
+        setError("❌ Kode minimal 2 karakter (contoh: MAT, IPA)");
+        return;
+      }
+      if (!formData.name) {
+        setError("❌ Nama mata pelajaran wajib diisi");
+        return;
+      }
+      if (formData.schoolTypes.length === 0) {
+        setError("❌ Pilih minimal 1 jenis sekolah");
+        return;
+      }
+      if (formData.grades.length === 0) {
+        setError("❌ Pilih minimal 1 tingkat kelas");
+        return;
+      }
+      
+      // Check for duplicate code
+      if (subjects.some(s => s.code === formData.code)) {
+        setError("❌ Kode mata pelajaran sudah digunakan");
         return;
       }
 
@@ -339,27 +373,114 @@ const SubjectManagement = () => {
     }
   };
 
+  const stats = {
+    total: subjects.length,
+    wajib: subjects.filter(s => s.category === 'WAJIB').length,
+    peminatan: subjects.filter(s => s.category === 'PEMINATAN').length,
+    muatanLokal: subjects.filter(s => s.category === 'MUATAN_LOKAL').length,
+    ekstra: subjects.filter(s => s.category === 'EKSTRAKURIKULER').length,
+  };
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 p-6">
-      <motion.div
-        variants={staggerContainer}
-        initial="initial"
-        animate="animate"
-        className="max-w-7xl mx-auto space-y-6"
-      >
-        {/* Header */}
-        <motion.div variants={fadeInUp} className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Manajemen Mata Pelajaran</h1>
-            <p className="text-muted-foreground mt-1">
-              Kelola mata pelajaran untuk sekolah Anda
-            </p>
+    <SidebarProvider>
+      <div className="flex h-screen w-full overflow-hidden">
+        <AppSidebar />
+        <main className="flex-1 overflow-y-auto bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
+          <div className="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b px-6 py-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <SidebarTrigger />
+                <div>
+                  <h1 className="text-2xl font-bold text-gray-900">Manajemen Mata Pelajaran</h1>
+                  <p className="text-sm text-muted-foreground">Kelola mata pelajaran sekolah</p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm">
+                  <Upload className="h-4 w-4 mr-2" />
+                  Import
+                </Button>
+                <Button variant="outline" size="sm">
+                  <Download className="h-4 w-4 mr-2" />
+                  Export
+                </Button>
+                <Button onClick={() => setCreateDialogOpen(true)}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Tambah Mapel
+                </Button>
+              </div>
+            </div>
           </div>
-          <Button onClick={() => setCreateDialogOpen(true)} size="lg">
-            <Plus className="h-4 w-4 mr-2" />
-            Tambah Mata Pelajaran
-          </Button>
-        </motion.div>
+
+          <div className="p-6 space-y-6">
+            <motion.div
+              variants={staggerContainer}
+              initial="initial"
+              animate="animate"
+              className="space-y-6"
+            >
+              {/* Statistics Cards */}
+              <motion.div variants={fadeInUp} className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white border-0">
+                  <CardContent className="pt-6">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-blue-100 text-sm font-medium">Total Mapel</p>
+                        <p className="text-3xl font-bold mt-1">{stats.total}</p>
+                      </div>
+                      <BookOpen className="h-10 w-10 opacity-80" />
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="hover:shadow-lg transition-shadow">
+                  <CardContent className="pt-6">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-muted-foreground text-sm">Wajib</p>
+                        <p className="text-2xl font-bold text-blue-600 mt-1">{stats.wajib}</p>
+                      </div>
+                      <Star className="h-8 w-8 text-blue-500" />
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="hover:shadow-lg transition-shadow">
+                  <CardContent className="pt-6">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-muted-foreground text-sm">Peminatan</p>
+                        <p className="text-2xl font-bold text-purple-600 mt-1">{stats.peminatan}</p>
+                      </div>
+                      <GraduationCap className="h-8 w-8 text-purple-500" />
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="hover:shadow-lg transition-shadow">
+                  <CardContent className="pt-6">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-muted-foreground text-sm">Muatan Lokal</p>
+                        <p className="text-2xl font-bold text-green-600 mt-1">{stats.muatanLokal}</p>
+                      </div>
+                      <BookMarked className="h-8 w-8 text-green-500" />
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="hover:shadow-lg transition-shadow">
+                  <CardContent className="pt-6">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-muted-foreground text-sm">Ekstrakurikuler</p>
+                        <p className="text-2xl font-bold text-orange-600 mt-1">{stats.ekstra}</p>
+                      </div>
+                      <Users className="h-8 w-8 text-orange-500" />
+                    </div>
+                  </CardContent>
+                </Card>
+              </motion.div>
 
         {/* Alerts */}
         {error && (
@@ -474,13 +595,21 @@ const SubjectManagement = () => {
             </CardHeader>
             <CardContent>
               {loading ? (
-                <div className="flex items-center justify-center py-12">
-                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+                <div className="flex flex-col items-center justify-center py-16">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
+                  <p className="text-muted-foreground">Memuat data...</p>
                 </div>
               ) : filteredSubjects.length === 0 ? (
-                <div className="text-center py-12">
-                  <BookOpen className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                  <p className="text-muted-foreground">Tidak ada mata pelajaran ditemukan</p>
+                <div className="text-center py-16">
+                  <div className="bg-blue-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <BookOpen className="h-10 w-10 text-blue-600" />
+                  </div>
+                  <h3 className="text-lg font-semibold mb-2">Belum ada mata pelajaran</h3>
+                  <p className="text-muted-foreground mb-4">Mulai dengan menambahkan mata pelajaran pertama</p>
+                  <Button onClick={() => setCreateDialogOpen(true)}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Tambah Mata Pelajaran
+                  </Button>
                 </div>
               ) : (
                 <div className="border rounded-lg overflow-hidden">
@@ -497,7 +626,7 @@ const SubjectManagement = () => {
                     </TableHeader>
                     <TableBody>
                       {filteredSubjects.map((subject) => (
-                        <TableRow key={subject._id}>
+                        <TableRow key={subject._id} className="hover:bg-blue-50/50 transition-colors">
                           <TableCell>
                             <div className="flex items-center gap-2">
                               <div
@@ -532,18 +661,32 @@ const SubjectManagement = () => {
                             </span>
                           </TableCell>
                           <TableCell className="text-right">
-                            <div className="flex items-center justify-end gap-2">
+                            <div className="flex items-center justify-end gap-1">
                               <Button
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => openEditDialog(subject)}
+                                className="hover:bg-blue-100"
                               >
                                 <Edit className="h-4 w-4" />
                               </Button>
                               <Button
                                 variant="ghost"
                                 size="sm"
+                                onClick={() => {
+                                  navigator.clipboard.writeText(subject.code);
+                                  setSuccess('Kode mata pelajaran berhasil disalin!');
+                                  setTimeout(() => setSuccess(''), 2000);
+                                }}
+                                className="hover:bg-green-100"
+                              >
+                                <Copy className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
                                 onClick={() => openDeleteDialog(subject)}
+                                className="hover:bg-red-100"
                               >
                                 <Trash2 className="h-4 w-4 text-red-500" />
                               </Button>
@@ -562,121 +705,204 @@ const SubjectManagement = () => {
 
       {/* Create Dialog */}
       <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Tambah Mata Pelajaran Baru</DialogTitle>
-            <DialogDescription>
-              Isi informasi mata pelajaran yang akan ditambahkan
-            </DialogDescription>
+            <div className="flex items-center gap-3 mb-2">
+              <div className="p-2 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg">
+                <BookOpen className="h-6 w-6 text-white" />
+              </div>
+              <div>
+                <DialogTitle className="text-2xl">Tambah Mata Pelajaran Baru</DialogTitle>
+                <DialogDescription className="text-base mt-1">
+                  Lengkapi form di bawah untuk menambahkan mata pelajaran
+                </DialogDescription>
+              </div>
+            </div>
           </DialogHeader>
 
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="code">Kode *</Label>
-                <Input
-                  id="code"
-                  placeholder="MAT, B.IND, IPA, dll"
-                  value={formData.code}
-                  onChange={(e) => setFormData({ ...formData, code: e.target.value.toUpperCase() })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="name">Nama *</Label>
-                <Input
-                  id="name"
-                  placeholder="Matematika"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="category">Kategori *</Label>
-              <Select
-                value={formData.category}
-                onValueChange={(value: any) => setFormData({ ...formData, category: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {CATEGORIES.map((cat) => (
-                    <SelectItem key={cat.value} value={cat.value}>
-                      {cat.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Jenis Sekolah *</Label>
-              <div className="grid grid-cols-4 gap-2">
-                {SCHOOL_TYPES.map((type) => (
-                  <div key={type} className="flex items-center space-x-2">
-                    <Checkbox
-                      checked={formData.schoolTypes.includes(type)}
-                      onCheckedChange={() => toggleSchoolType(type)}
-                    />
-                    <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                      {type}
-                    </label>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Kelas *</Label>
-              <div className="grid grid-cols-6 gap-2">
-                {GRADES.map((grade) => (
-                  <div key={grade} className="flex items-center space-x-2">
-                    <Checkbox
-                      checked={formData.grades.includes(grade)}
-                      onCheckedChange={() => toggleGrade(grade)}
-                    />
-                    <label className="text-sm font-medium">{grade}</label>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="description">Deskripsi</Label>
-              <Textarea
-                id="description"
-                placeholder="Deskripsi mata pelajaran..."
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                rows={3}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Warna</Label>
-              <div className="flex gap-2">
-                {PRESET_COLORS.map((color) => (
-                  <button
-                    key={color}
-                    type="button"
-                    className={`w-8 h-8 rounded-full border-2 ${
-                      formData.color === color ? "border-gray-900" : "border-gray-300"
-                    }`}
-                    style={{ backgroundColor: color }}
-                    onClick={() => setFormData({ ...formData, color })}
+          <div className="space-y-6 pt-2">
+            {/* Section 1: Basic Information */}
+            <div className="space-y-4 p-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg border-2 border-blue-100">
+              <h3 className="font-semibold text-lg flex items-center gap-2 text-gray-900">
+                <BookOpen className="h-5 w-5 text-blue-600" />
+                Informasi Dasar
+              </h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="code" className="text-sm font-semibold flex items-center gap-1">
+                    Kode <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="code"
+                    placeholder="Contoh: MAT, IPA, B.IND"
+                    value={formData.code}
+                    onChange={(e) => setFormData({ ...formData, code: e.target.value.toUpperCase() })}
+                    className="h-11 border-2 focus-visible:ring-2"
                   />
-                ))}
+                  <p className="text-xs text-muted-foreground">Kode singkat (2-5 karakter)</p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="name" className="text-sm font-semibold flex items-center gap-1">
+                    Nama Lengkap <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="name"
+                    placeholder="Contoh: Matematika"
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    className="h-11 border-2 focus-visible:ring-2"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="category" className="text-sm font-semibold flex items-center gap-1">
+                  Kategori <span className="text-red-500">*</span>
+                </Label>
+                <Select
+                  value={formData.category}
+                  onValueChange={(value: any) => setFormData({ ...formData, category: value })}
+                >
+                  <SelectTrigger className="h-11 border-2">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CATEGORIES.map((cat) => (
+                      <SelectItem key={cat.value} value={cat.value}>
+                        {cat.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Section 2: Applicable Schools & Grades */}
+            <div className="space-y-4 p-4 bg-gradient-to-r from-green-50 to-teal-50 rounded-lg border-2 border-green-100">
+              <h3 className="font-semibold text-lg flex items-center gap-2 text-gray-900">
+                <GraduationCap className="h-5 w-5 text-green-600" />
+                Cakupan Jenjang & Kelas
+              </h3>
+              
+              <div className="space-y-3">
+                <Label className="text-sm font-semibold flex items-center gap-1">
+                  Jenis Sekolah <span className="text-red-500">*</span>
+                </Label>
+                <div className="grid grid-cols-4 gap-2">
+                  {SCHOOL_TYPES.map((type) => (
+                    <label
+                      key={type}
+                      className={`flex items-center justify-center gap-2 p-3 rounded-lg border-2 cursor-pointer transition-all ${
+                        formData.schoolTypes.includes(type)
+                          ? 'bg-green-100 border-green-500 text-green-900'
+                          : 'bg-white border-gray-200 hover:border-green-300'
+                      }`}
+                    >
+                      <Checkbox
+                        checked={formData.schoolTypes.includes(type)}
+                        onCheckedChange={() => toggleSchoolType(type)}
+                        className="data-[state=checked]:bg-green-600"
+                      />
+                      <span className="text-sm font-semibold">{type}</span>
+                    </label>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">Pilih jenjang sekolah yang berlaku</p>
+              </div>
+
+              <div className="space-y-3">
+                <Label className="text-sm font-semibold flex items-center gap-1">
+                  Tingkat Kelas <span className="text-red-500">*</span>
+                </Label>
+                <div className="grid grid-cols-6 gap-2">
+                  {GRADES.map((grade) => (
+                    <label
+                      key={grade}
+                      className={`flex items-center justify-center gap-2 p-2 rounded-lg border-2 cursor-pointer transition-all ${
+                        formData.grades.includes(grade)
+                          ? 'bg-blue-100 border-blue-500 text-blue-900'
+                          : 'bg-white border-gray-200 hover:border-blue-300'
+                      }`}
+                    >
+                      <Checkbox
+                        checked={formData.grades.includes(grade)}
+                        onCheckedChange={() => toggleGrade(grade)}
+                        className="data-[state=checked]:bg-blue-600"
+                      />
+                      <span className="text-sm font-semibold">{grade}</span>
+                    </label>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Dipilih: {formData.grades.length > 0 ? formData.grades.sort((a,b) => a-b).join(', ') : 'Belum ada'}
+                </p>
+              </div>
+            </div>
+
+            {/* Section 3: Additional Details */}
+            <div className="space-y-4 p-4 bg-gradient-to-r from-amber-50 to-orange-50 rounded-lg border-2 border-amber-100">
+              <h3 className="font-semibold text-lg flex items-center gap-2 text-gray-900">
+                <Star className="h-5 w-5 text-amber-600" />
+                Detail Tambahan
+              </h3>
+              
+              <div className="space-y-2">
+                <Label htmlFor="description" className="text-sm font-semibold">
+                  Deskripsi
+                </Label>
+                <Textarea
+                  id="description"
+                  placeholder="Tambahkan deskripsi singkat tentang mata pelajaran ini..."
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  rows={3}
+                  className="border-2 focus-visible:ring-2 resize-none"
+                />
+              </div>
+
+              <div className="space-y-3">
+                <Label className="text-sm font-semibold flex items-center gap-2">
+                  Warna Tema
+                  <div 
+                    className="w-6 h-6 rounded-full border-2 border-gray-300 shadow-sm"
+                    style={{ backgroundColor: formData.color }}
+                  />
+                </Label>
+                <div className="flex flex-wrap gap-3">
+                  {PRESET_COLORS.map((color) => (
+                    <button
+                      key={color}
+                      type="button"
+                      className={`w-10 h-10 rounded-full border-2 transition-all hover:scale-110 ${
+                        formData.color === color 
+                          ? "border-gray-900 ring-2 ring-offset-2 ring-gray-400 scale-110" 
+                          : "border-gray-300 hover:border-gray-500"
+                      }`}
+                      style={{ backgroundColor: color }}
+                      onClick={() => setFormData({ ...formData, color })}
+                    />
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">Pilih warna untuk identitas visual mata pelajaran</p>
               </div>
             </div>
           </div>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>
+          <DialogFooter className="gap-2 pt-6">
+            <Button 
+              variant="outline" 
+              onClick={() => setCreateDialogOpen(false)}
+              className="flex-1"
+            >
               Batal
             </Button>
-            <Button onClick={handleCreate}>Tambah Mata Pelajaran</Button>
+            <Button 
+              onClick={handleCreate}
+              className="flex-1 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Tambah Mata Pelajaran
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -821,7 +1047,10 @@ const SubjectManagement = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+          </div>
+        </main>
+      </div>
+    </SidebarProvider>
   );
 };
 

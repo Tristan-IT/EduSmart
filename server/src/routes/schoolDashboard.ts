@@ -6,6 +6,9 @@ import {
   getStudents,
   getDailyAnalytics,
   getTopPerformers,
+  getSchoolAlerts,
+  getSchoolPerformanceMetrics,
+  getRecentActivity,
 } from "../controllers/schoolDashboardController.js";
 import { authenticate } from "../middleware/authenticate.js";
 
@@ -21,5 +24,8 @@ router.get("/classes", getClasses as any);
 router.get("/students", getStudents as any);
 router.get("/analytics/daily", getDailyAnalytics as any);
 router.get("/top-performers", getTopPerformers as any);
+router.get("/alerts", getSchoolAlerts as any);
+router.get("/performance", getSchoolPerformanceMetrics as any);
+router.get("/recent-activity", getRecentActivity as any);
 
 export default router;

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { motion } from "framer-motion";
+import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,6 +15,7 @@ import { fadeInUp, staggerContainer, scaleIn } from "@/lib/animations";
 
 const StudentRegistration = () => {
   const navigate = useNavigate();
+  const { login } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [validatingClass, setValidatingClass] = useState(false);
@@ -44,14 +46,16 @@ const StudentRegistration = () => {
 
     setValidatingClass(true);
     try {
-      // Mock validation - in real app, call API to validate
-      // For now, accept any Class ID starting with "CLS-"
-      if (id.startsWith("CLS-")) {
+      // Call API to validate class ID
+      const response = await fetch(`http://localhost:5000/api/student-registration/validate/${id}`);
+      const data = await response.json();
+
+      if (response.ok && data.success && data.data) {
         setClassValid(true);
         setClassInfo({
-          name: "Kelas 10A",
-          capacity: 30,
-          currentStudents: 25,
+          name: data.data.displayName || data.data.className || "Kelas",
+          capacity: data.data.maxStudents || 40,
+          currentStudents: data.data.currentStudents || 0,
         });
       } else {
         setClassValid(false);
@@ -108,12 +112,10 @@ const StudentRegistration = () => {
           email,
           password,
           classId,
-          studentProfile: {
-            rollNumber: rollNumber || undefined,
-            parentName: parentName || undefined,
-            parentPhone: parentPhone || undefined,
-            parentEmail: parentEmail || undefined,
-          },
+          rollNumber: rollNumber || 1,
+          parentName: parentName || undefined,
+          parentPhone: parentPhone || undefined,
+          parentEmail: parentEmail || undefined,
         }),
       });
 
@@ -123,13 +125,25 @@ const StudentRegistration = () => {
         throw new Error(data.message || "Registrasi gagal");
       }
 
-      // Success
-      if (data.data.token) {
-        localStorage.setItem("token", data.data.token);
-      }
+      // Success - login to AuthContext
+      if (data.token && data.user) {
+        login({
+          token: data.token,
+          user: {
+            id: data.user.id || data.user._id,
+            name: data.user.name,
+            email: data.user.email,
+            role: data.user.role,
+            className: data.user.className,
+            school: data.user.school,
+          },
+        });
 
-      // Redirect to student dashboard
-      navigate("/student-dashboard");
+        // Redirect to student dashboard
+        navigate("/student-dashboard");
+      } else {
+        throw new Error("Token atau user data tidak ditemukan");
+      }
     } catch (err: any) {
       setError(err.message || "Terjadi kesalahan saat registrasi");
     } finally {
@@ -351,7 +365,9 @@ const StudentRegistration = () => {
                         </Label>
                         <Input
                           id="rollNumber"
-                          type="text"
+                          type="number"
+                          min="1"
+                          max="9999"
                           placeholder="Contoh: 12345"
                           value={rollNumber}
                           onChange={(e) => setRollNumber(e.target.value)}

@@ -5,7 +5,7 @@ import { AlertMessage } from "@/components/AlertMessage";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { mockContentItems, ContentItem } from "@/data/mockData";
+import { ContentItem } from "@/data/mockData";
 import { useNavigate } from "react-router-dom";
 import { CTA_COPY_VARIANTS } from "@/data/ctaCopy";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
@@ -14,14 +14,6 @@ import { BookOpen, Upload, FileDown, Plus, GraduationCap } from "lucide-react";
 import { UploadContentDialog } from "@/components/UploadContentDialog";
 import { EditContentDialog } from "@/components/EditContentDialog";
 import { toast } from "sonner";
-import { 
-  getAllContent, 
-  addContent, 
-  updateContent, 
-  deleteContent, 
-  initializeContentStorage,
-  searchContent 
-} from "@/lib/contentService";
 import { subjectApi } from "@/lib/apiClient";
 
 interface Subject {
@@ -43,17 +35,47 @@ const ContentLibrary = () => {
   const [contentItems, setContentItems] = useState<ContentItem[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [loadingSubjects, setLoadingSubjects] = useState(true);
+  const [loadingContent, setLoadingContent] = useState(true);
 
-  // Initialize storage and load content
+  // Load content from API
   useEffect(() => {
-    initializeContentStorage(mockContentItems);
     loadContent();
     loadSubjects();
   }, []);
 
-  const loadContent = () => {
-    const items = getAllContent();
-    setContentItems(items);
+  const loadContent = async () => {
+    try {
+      setLoadingContent(true);
+      const token = localStorage.getItem("token");
+      const response = await fetch("http://localhost:5000/api/content/items/list", {
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+      
+      const data = await response.json();
+      if (data.success) {
+        // Transform backend data to match frontend ContentItem interface
+        const items = data.items.map((item: any) => ({
+          id: item._id,
+          title: item.title,
+          topic: item.subject?.code || item.topic,
+          type: item.type,
+          difficulty: item.difficulty,
+          durationMinutes: item.durationMinutes,
+          author: item.author,
+          updatedAt: item.updatedAt,
+          tags: item.tags || [],
+        }));
+        setContentItems(items);
+      }
+    } catch (error) {
+      console.error("Failed to load content:", error);
+      toast.error("Gagal memuat data materi");
+    } finally {
+      setLoadingContent(false);
+    }
   };
 
   const loadSubjects = async () => {
@@ -71,10 +93,38 @@ const ContentLibrary = () => {
     }
   };
 
-  const handleUpload = (content: Omit<ContentItem, 'id' | 'updatedAt'>) => {
-    const newContent = addContent(content);
-    loadContent();
-    toast.success(`Materi "${newContent.title}" berhasil ditambahkan!`);
+  const handleUpload = async (content: Omit<ContentItem, 'id' | 'updatedAt'>) => {
+    try {
+      const token = localStorage.getItem("token");
+      const response = await fetch("http://localhost:5000/api/content/items/create", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          title: content.title,
+          topic: content.topic,
+          subject: subjects.find(s => s.code === content.topic)?._id,
+          type: content.type,
+          difficulty: content.difficulty,
+          durationMinutes: content.durationMinutes,
+          author: content.author,
+          tags: content.tags || [],
+        }),
+      });
+      
+      const data = await response.json();
+      if (data.success) {
+        await loadContent();
+        toast.success(`Materi "${content.title}" berhasil ditambahkan!`);
+      } else {
+        toast.error(data.message || "Gagal menambahkan materi");
+      }
+    } catch (error) {
+      console.error("Failed to upload content:", error);
+      toast.error("Gagal menambahkan materi");
+    }
   };
 
   const handleEdit = (content: ContentItem) => {
@@ -82,30 +132,84 @@ const ContentLibrary = () => {
     setEditDialogOpen(true);
   };
 
-  const handleSaveEdit = (content: ContentItem) => {
-    updateContent(content.id, content);
-    loadContent();
-    toast.success(`Materi "${content.title}" berhasil diperbarui!`);
+  const handleSaveEdit = async (content: ContentItem) => {
+    try {
+      const token = localStorage.getItem("token");
+      const response = await fetch(`http://localhost:5000/api/content/items/${content.id}`, {
+        method: "PUT",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          title: content.title,
+          topic: content.topic,
+          type: content.type,
+          difficulty: content.difficulty,
+          durationMinutes: content.durationMinutes,
+          author: content.author,
+          tags: content.tags || [],
+        }),
+      });
+      
+      const data = await response.json();
+      if (data.success) {
+        await loadContent();
+        toast.success(`Materi "${content.title}" berhasil diperbarui!`);
+      } else {
+        toast.error(data.message || "Gagal memperbarui materi");
+      }
+    } catch (error) {
+      console.error("Failed to update content:", error);
+      toast.error("Gagal memperbarui materi");
+    }
   };
 
-  const handleDelete = (id: string, title: string) => {
+  const handleDelete = async (id: string, title: string) => {
     if (window.confirm(`Apakah Anda yakin ingin menghapus materi "${title}"?`)) {
-      deleteContent(id);
-      loadContent();
-      toast.success(`Materi "${title}" berhasil dihapus!`);
+      try {
+        const token = localStorage.getItem("token");
+        const response = await fetch(`http://localhost:5000/api/content/items/${id}`, {
+          method: "DELETE",
+          headers: {
+            "Authorization": `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+          await loadContent();
+          toast.success(`Materi "${title}" berhasil dihapus!`);
+        } else {
+          toast.error(data.message || "Gagal menghapus materi");
+        }
+      } catch (error) {
+        console.error("Failed to delete content:", error);
+        toast.error("Gagal menghapus materi");
+      }
     }
   };
 
   const filteredItems = useMemo(() => {
-    let items = searchContent(searchTerm, {
-      difficulty: difficulty === 'all' ? undefined : difficulty,
-    });
+    let items = contentItems;
     
-    // Filter by subject if selected
+    // Filter by search term
+    if (searchTerm) {
+      items = items.filter(item => 
+        item.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.topic.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+    
+    // Filter by difficulty
+    if (difficulty !== 'all') {
+      items = items.filter(item => item.difficulty === difficulty);
+    }
+    
+    // Filter by subject
     if (selectedSubject !== 'all') {
-      // In real implementation, this would filter by subjectId from API
-      // For now, we'll keep all items as mock data doesn't have subject field yet
-      items = items;
+      items = items.filter(item => item.topic === selectedSubject);
     }
     
     return items;
@@ -201,17 +305,17 @@ const ContentLibrary = () => {
         {/* Main Content */}
         <div className="container px-6 py-8 max-w-7xl mx-auto">
           <div className="space-y-6">
-            <div className="space-y-2">
-              <p className="text-sm text-muted-foreground">
-                Unggah materi, tandai kesesuaian kurikulum, dan hubungkan langsung dengan jalur belajar siswa.
-              </p>
-            </div>
-
             <AlertMessage
               type="info"
-              title="Butuh bantuan mengelola konten?"
-              message="Gunakan template unggah massal untuk mempercepat migrasi dari LMS lama."
+              title="💡 Perpustakaan Konten = Pusat Materi Pembelajaran"
+              message="Di sini Anda bisa mengelola semua materi pembelajaran (video, PDF, quiz, slide). Materi yang diupload akan tersedia untuk siswa melalui Skill Tree dan Learning Path. Gunakan Template Library untuk mempercepat pembuatan konten."
             />
+
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground">
+                📚 Upload materi → 🎯 Hubungkan ke Skill Tree → 🚀 Siswa dapat mengakses
+              </p>
+            </div>
 
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex flex-wrap items-center gap-3">
@@ -222,7 +326,7 @@ const ContentLibrary = () => {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Semua Mata Pelajaran</SelectItem>
-                    {subjects.map((subject) => (
+                    {(subjects || []).map((subject) => (
                       <SelectItem key={subject._id} value={subject._id}>
                         <div className="flex items-center gap-2">
                           <div 
@@ -262,13 +366,20 @@ const ContentLibrary = () => {
               </div>
             </div>
 
-            <DataTable
-              columns={columns}
-              rows={filteredItems}
-              sortable
-              filters={null}
-              emptyMessage="Belum ada materi yang cocok. Coba ubah filter atau unggah materi baru."
-            />
+            {loadingContent ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                <span className="ml-3 text-muted-foreground">Memuat data materi...</span>
+              </div>
+            ) : (
+              <DataTable
+                columns={columns}
+                rows={filteredItems}
+                sortable
+                filters={null}
+                emptyMessage="Belum ada materi yang cocok. Coba ubah filter atau unggah materi baru."
+              />
+            )}
           </div>
         </div>
       </main>

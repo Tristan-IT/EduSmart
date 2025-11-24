@@ -82,6 +82,7 @@ export const createClass = async (
       },
     });
   } catch (error: any) {
+    console.error("❌ Create class error:", error);
     res.status(400).json({
       success: false,
       message: error.message,

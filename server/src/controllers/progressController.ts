@@ -37,7 +37,7 @@ export async function getStudentProgressController(req: Request, res: Response) 
     const userId = (req as any).user?.userId;
     const userRole = (req as any).user?.role;
 
-    if (userRole === "student" && userId !== studentId) {
+    if (userRole === "student" && userId && userId.toString() !== studentId) {
       return res.status(403).json({
         success: false,
         message: "You can only view your own progress",
@@ -775,4 +775,126 @@ export {
   getPathRecommendations as getRecommendations,
   getSubjectRecommendations 
 } from "../services/recommendationService.js";
+
+/**
+ * GET /api/progress/student/me
+ * Get current student's overall learning progress
+ */
+export async function getMyProgress(req: Request, res: Response) {
+  try {
+    const userId = (req as any).user?._id || (req as any).user?.userId;
+
+    if (!userId) {
+      return res.status(401).json({ message: "User not authenticated" });
+    }
+
+    // Import models dynamically to avoid circular dependencies
+    const StudentSubjectProgressModel = (await import("../models/StudentSubjectProgress.js")).default;
+
+    // Get skill tree progress
+    const skillTreeProgress = await UserProgressModel.find({ user: userId });
+    
+    // Get subject progress
+    const subjectProgress = await StudentSubjectProgressModel.find({ student: userId })
+      .populate("subject", "name")
+      .select("subject averageScore masteryPercentage totalLessonsCompleted totalQuizzesCompleted");
+
+    // Calculate overall stats
+    const completedLessons = skillTreeProgress.filter(p => p.status === "completed").length;
+    const totalLessons = skillTreeProgress.length;
+    
+    // Calculate average score from all subjects
+    let averageScore = 0;
+    if (subjectProgress.length > 0) {
+      const totalScore = subjectProgress.reduce((sum: number, sp: any) => sum + sp.averageScore, 0);
+      averageScore = Math.round(totalScore / subjectProgress.length);
+    }
+
+    // Build mastery progress array with colors
+    const masteryProgress = subjectProgress.map((sp: any, index: number) => {
+      const colors = ["bg-blue-500", "bg-purple-500", "bg-green-500", "bg-amber-500", "bg-red-500", "bg-pink-500"];
+      return {
+        subject: sp.subject?.name || "Unknown Subject",
+        percentage: sp.masteryPercentage,
+        color: colors[index % colors.length],
+      };
+    });
+
+    return res.status(200).json({
+      completedLessons,
+      totalLessons,
+      averageScore,
+      masteryProgress,
+    });
+  } catch (error) {
+    console.error("Error fetching student progress:", error);
+    return res.status(500).json({ message: "Failed to fetch progress data" });
+  }
+}
+
+/**
+ * GET /api/progress/stats
+ * Get dashboard statistics for current student
+ */
+export async function getStudentStats(req: Request, res: Response) {
+  try {
+    const userId = (req as any).user?.id;
+    
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    // Get all subject progress for the student
+    const subjectProgress = await UserProgressModel.find({ student: userId })
+      .select("subject masteryPercentage completedTopics totalLessonsCompleted totalQuizzesCompleted")
+      .populate("subject", "name code");
+
+    // Calculate overall mastery
+    const masteryValues = subjectProgress
+      .map(sp => sp.masteryPercentage || 0)
+      .filter(v => v > 0);
+    const averageMastery = masteryValues.length > 0
+      ? Math.round(masteryValues.reduce((a, b) => a + b, 0) / masteryValues.length)
+      : 0;
+
+    // Build mastery per topic object
+    const masteryPerTopic: Record<string, number> = {};
+    subjectProgress.forEach(sp => {
+      if (sp.subject && typeof sp.subject === 'object' && 'code' in sp.subject) {
+        masteryPerTopic[(sp.subject as any).code] = sp.masteryPercentage || 0;
+      }
+    });
+
+    // Calculate completed topics
+    const completedTopics = subjectProgress.reduce(
+      (sum, sp) => sum + (sp.completedTopics || 0),
+      0
+    );
+
+    // Get user for streak data
+    const user = await UserModel.findById(userId).select("streak bestStreak");
+    
+    return res.status(200).json({
+      success: true,
+      data: {
+        averageMastery,
+        masteryPerTopic,
+        completedTopics,
+        totalTopics: subjectProgress.length * 10, // Estimate
+        streak: user?.streak || 0,
+        bestStreak: user?.bestStreak || 0,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching student stats:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch stats",
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+}
 

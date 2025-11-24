@@ -25,10 +25,15 @@ export const calculateRecommendationScore = async (
 ): Promise<RecommendationScore> => {
   let score = 0;
   const reasons: string[] = [];
+  const completedHistory: any[] = Array.isArray(userProgress?.completedNodes)
+    ? userProgress.completedNodes
+    : [];
+  const nodePrereqs: string[] = Array.isArray(node?.prerequisites) ? node.prerequisites : [];
+  const nodeDependencies: string[] = Array.isArray(node?.dependencies) ? node.dependencies : [];
 
   // Factor 1: Subject Affinity (20 points)
   // Prioritize subjects where user performs well
-  const completedInSubject = userProgress.completedNodes.filter((cn: any) => {
+  const completedInSubject = completedHistory.filter((cn: any) => {
     const completedNode = node.subject === cn.subject;
     return completedNode;
   });
@@ -77,8 +82,8 @@ export const calculateRecommendationScore = async (
 
   // Factor 3: Prerequisites Completion (30 points)
   // Heavily favor nodes where all prerequisites are met
-  const completedNodeIds = userProgress.completedNodes.map((cn: any) => cn.nodeId.toString());
-  const prerequisitesMet = node.prerequisites.every((prereq: string) => 
+  const completedNodeIds = completedHistory.map((cn: any) => cn.nodeId?.toString());
+  const prerequisitesMet = nodePrereqs.length === 0 || nodePrereqs.every((prereq: string) =>
     completedNodeIds.includes(prereq.toString())
   );
 
@@ -86,10 +91,10 @@ export const calculateRecommendationScore = async (
     score += 30;
     reasons.push('All prerequisites completed');
   } else {
-    const metCount = node.prerequisites.filter((prereq: string) => 
+    const metCount = nodePrereqs.filter((prereq: string) => 
       completedNodeIds.includes(prereq.toString())
     ).length;
-    const metPercentage = (metCount / node.prerequisites.length) * 100;
+    const metPercentage = nodePrereqs.length > 0 ? (metCount / nodePrereqs.length) * 100 : 0;
     
     if (metPercentage >= 50) {
       score += 15;
@@ -102,13 +107,13 @@ export const calculateRecommendationScore = async (
 
   // Factor 4: Learning Path Continuity (15 points)
   // Favor nodes that continue current learning path
-  const recentNodes = userProgress.completedNodes
+  const recentNodes = completedHistory
     .slice(-3)
     .map((cn: any) => cn.nodeId.toString());
   
-  const isContinuation = node.dependencies.some((dep: string) => 
-    recentNodes.includes(dep.toString())
-  );
+  const isContinuation = nodeDependencies.length > 0
+    ? nodeDependencies.some((dep: string) => recentNodes.includes(dep?.toString()))
+    : false;
 
   if (isContinuation) {
     score += 15;
@@ -117,8 +122,8 @@ export const calculateRecommendationScore = async (
 
   // Factor 5: Time Investment (10 points)
   // Consider nodes that match user's typical study time
-  const avgTimeSpent = userProgress.completedNodes.length > 0
-    ? userProgress.completedNodes.reduce((sum: any, cn: any) => sum + (cn.timeSpent || 0), 0) / userProgress.completedNodes.length
+  const avgTimeSpent = completedHistory.length > 0
+    ? completedHistory.reduce((sum: any, cn: any) => sum + (cn.timeSpent || 0), 0) / completedHistory.length
     : 300;
 
   const estimatedTime = (node.lessonContent?.estimatedTime || 10) * 60; // Convert to seconds
@@ -160,7 +165,9 @@ export const calculateRecommendationScore = async (
   // Factor 8: Checkpoint Progression (-5 to +10 points)
   // Balance checkpoint nodes vs regular nodes
   if (node.isCheckpoint) {
-    const checkpointsCompleted = userProgress.checkpointsCompleted?.length || 0;
+    const checkpointsCompleted = Array.isArray(userProgress?.checkpointsCompleted)
+      ? userProgress.checkpointsCompleted.length
+      : 0;
     if (checkpointsCompleted >= 3) {
       score += 10;
       reasons.push('Important checkpoint to unlock new areas');
@@ -273,9 +280,13 @@ export const getPathRecommendations = async (req: Request, res: Response) => {
  */
 const generateInsights = (userProgress: any, user: any, recommendations: any[]): string[] => {
   const insights: string[] = [];
+  const completedHistory: any[] = Array.isArray(userProgress?.completedNodes)
+    ? userProgress.completedNodes
+    : [];
+  const currentStreak = userProgress?.currentStreak ?? 0;
 
   // Completion rate insight
-  const completedCount = userProgress.completedNodes.length;
+  const completedCount = completedHistory.length;
   if (completedCount === 0) {
     insights.push("Welcome! Start with beginner nodes to build your foundation.");
   } else if (completedCount < 5) {
@@ -285,15 +296,15 @@ const generateInsights = (userProgress: any, user: any, recommendations: any[]):
   }
 
   // Streak insight
-  if (userProgress.currentStreak >= 7) {
+  if (currentStreak >= 7) {
     insights.push("🔥 Amazing 7-day streak! You're developing a strong learning habit.");
-  } else if (userProgress.currentStreak >= 3) {
+  } else if (currentStreak >= 3) {
     insights.push("Keep your streak alive! Try to complete at least one node daily.");
   }
 
   // Performance insight
   const avgScore = completedCount > 0
-    ? userProgress.completedNodes.reduce((sum: number, cn: any) => sum + cn.score, 0) / completedCount
+    ? completedHistory.reduce((sum: number, cn: any) => sum + (cn.score || 0), 0) / completedCount
     : 0;
 
   if (avgScore >= 90) {
@@ -305,7 +316,7 @@ const generateInsights = (userProgress: any, user: any, recommendations: any[]):
   }
 
   // Subject diversity insight
-  const subjects = new Set(userProgress.completedNodes.map((cn: any) => cn.subject));
+  const subjects = new Set(completedHistory.map((cn: any) => cn.subject));
   if (subjects.size === 1 && completedCount >= 5) {
     insights.push("Try exploring different subjects to broaden your knowledge.");
   } else if (subjects.size >= 3) {
@@ -324,10 +335,11 @@ const generateInsights = (userProgress: any, user: any, recommendations: any[]):
 /**
  * Identify strong subjects based on completion and scores
  */
-const getStrongSubjects = (userProgress: any): string[] => {
+const getStrongSubjects = (progressRecords: any[]): string[] => {
+  const completed = Array.isArray(progressRecords) ? progressRecords : [];
   const subjectStats: Record<string, { count: number; avgScore: number }> = {};
 
-  userProgress.completedNodes.forEach((cn: any) => {
+  completed.forEach((cn: any) => {
     const subject = cn.subject || 'unknown';
     if (!subjectStats[subject]) {
       subjectStats[subject] = { count: 0, avgScore: 0 };
@@ -350,10 +362,11 @@ const getStrongSubjects = (userProgress: any): string[] => {
 /**
  * Determine preferred difficulty based on completion patterns
  */
-const getPreferredDifficulty = (userProgress: any): string => {
+const getPreferredDifficulty = (progressRecords: any[]): string => {
+  const completed = Array.isArray(progressRecords) ? progressRecords : [];
   const difficultyCount: Record<string, number> = {};
 
-  userProgress.completedNodes.forEach((cn: any) => {
+  completed.forEach((cn: any) => {
     const diff = cn.difficulty || 'beginner';
     difficultyCount[diff] = (difficultyCount[diff] || 0) + 1;
   });

@@ -3,6 +3,7 @@ import GemTransactionModel from "../models/GemTransaction.js";
 import UserAchievementModel from "../models/UserAchievement.js";
 import AchievementModel from "../models/Achievement.js";
 import { Types } from "mongoose";
+import { notifyAchievement } from "./notificationService.js";
 
 /**
  * Calculate XP needed for next level
@@ -379,6 +380,18 @@ export async function checkAchievements(userId: string | Types.ObjectId) {
         // Award XP and gems
         await addXP(userId, achievement.xpReward, `Achievement unlocked: ${achievement.title}`);
         await addGems(userId, achievement.gemsReward, `Achievement unlocked: ${achievement.title}`);
+
+        // Notify student about achievement unlock
+        try {
+          await notifyAchievement(
+            userId.toString(),
+            achievement.title,
+            achievement.description
+          );
+          console.log(`[Notification] Student notified about achievement: ${achievement.title}`);
+        } catch (notifError) {
+          console.error('Failed to send achievement notification:', notifError);
+        }
       }
     }
 

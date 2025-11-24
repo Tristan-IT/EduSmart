@@ -68,7 +68,26 @@ const SchoolOwnerStudents = () => {
     try {
       setLoading(true);
       const token = localStorage.getItem("token");
-      const schoolId = localStorage.getItem("schoolId");
+      let schoolId = localStorage.getItem("schoolId");
+      
+      if (!schoolId) {
+        // Fallback: get from user profile
+        const userResponse = await fetch("http://localhost:5000/api/school-owner/profile", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        
+        if (userResponse.ok) {
+          const userData = await userResponse.json();
+          schoolId = userData.schoolId;
+        }
+      }
+      
+      if (!schoolId) {
+        setError("School ID tidak ditemukan. Silakan login kembali.");
+        return;
+      }
       
       const response = await fetch(`http://localhost:5000/api/school-dashboard/students?schoolId=${schoolId}`, {
         headers: {

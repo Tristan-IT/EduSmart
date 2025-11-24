@@ -8,6 +8,8 @@ import {
   deleteModule,
   createItem,
   getItems,
+  updateItem,
+  deleteItem,
   createQuestion,
   getQuestions,
   // Content Management System endpoints
@@ -44,6 +46,8 @@ contentRouter.delete("/modules/:moduleId", authenticate, deleteModule);
 // Content Item routes (requires authentication)
 contentRouter.post("/items/create", authenticate, createItem);
 contentRouter.get("/items/list", authenticate, getItems);
+contentRouter.put("/items/:id", authenticate, updateItem);
+contentRouter.delete("/items/:id", authenticate, deleteItem);
 
 // Quiz Question routes (requires authentication)
 contentRouter.post("/quiz-questions", authenticate, createQuestion);

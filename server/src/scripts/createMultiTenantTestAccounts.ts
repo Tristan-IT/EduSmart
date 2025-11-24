@@ -60,9 +60,12 @@ async function createQuickTestAccounts() {
     // Create test class
     const testClass = await Class.create({
       classId: `CLS-${String(Math.floor(Math.random() * 100000)).padStart(5, "0")}`,
-      className: "Test Class A",
+      className: "10A",
       grade: 10,
       section: "A",
+      schoolType: "SMA",
+      displayName: "Kelas 10 A",
+      shortName: "10 A",
       maxStudents: 30,
       currentStudents: 0,
       school: school._id,

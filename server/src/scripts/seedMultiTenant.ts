@@ -5,6 +5,7 @@ import { dirname, join } from "path";
 import School from "../models/School";
 import Class from "../models/Class";
 import User from "../models/User";
+import Subject from "../models/Subject";
 
 // ES module fix for __dirname
 const __filename = fileURLToPath(import.meta.url);
@@ -35,6 +36,7 @@ async function seedMultiTenantData() {
     console.log("\n🗑️  Clearing existing multi-tenant data...");
     await School.deleteMany({});
     await Class.deleteMany({});
+    await Subject.deleteMany({});
     
     // Delete only multi-tenant users
     await User.deleteMany({ role: { $in: ["school_owner", "teacher", "student"] } });
@@ -82,6 +84,36 @@ async function seedMultiTenantData() {
     });
 
     // ========================================
+    // CREATE SUBJECTS FOR SCHOOL 1
+    // ========================================
+    console.log("\n📚 Creating subjects...");
+
+    const subjectsData = [
+      { name: "Matematika Wajib", code: "MAT-W", color: "#3B82F6", icon: "📐", category: "Wajib" },
+      { name: "Bahasa Indonesia", code: "BIND", color: "#EF4444", icon: "📖", category: "Wajib" },
+      { name: "Bahasa Inggris", code: "BING", color: "#10B981", icon: "🌍", category: "Wajib" },
+      { name: "Fisika", code: "FIS", color: "#8B5CF6", icon: "⚛️", category: "Peminatan" },
+      { name: "Kimia", code: "KIM", color: "#F59E0B", icon: "🧪", category: "Peminatan" },
+      { name: "Biologi", code: "BIO", color: "#059669", icon: "🧬", category: "Peminatan" },
+      { name: "Sejarah", code: "SEJ", color: "#DC2626", icon: "📜", category: "Wajib" },
+      { name: "Geografi", code: "GEO", color: "#14B8A6", icon: "🌏", category: "Peminatan" },
+      { name: "Ekonomi", code: "EKO", color: "#F97316", icon: "💰", category: "Peminatan" },
+      { name: "Sosiologi", code: "SOS", color: "#6366F1", icon: "👥", category: "Peminatan" },
+    ];
+
+    const subjects1 = await Subject.insertMany(
+      subjectsData.map(subject => ({
+        ...subject,
+        school: school1._id,
+        schoolId: school1.schoolId,
+        schoolName: school1.schoolName,
+        isActive: true,
+      }))
+    );
+
+    console.log(`✅ Created ${subjects1.length} subjects`);
+
+    // ========================================
     // CREATE CLASSES FOR SCHOOL 1
     // ========================================
     console.log("\n🎓 Creating classes...");
@@ -108,15 +140,22 @@ async function seedMultiTenantData() {
     // ========================================
     console.log("\n👨‍🏫 Creating teacher...");
 
+    // Get subject references for teacher
+    const matematika = subjects1.find(s => s.name === "Matematika Wajib");
+    const fisika = subjects1.find(s => s.name === "Fisika");
+
     const teacher1 = await User.create({
-      name: "Budi Prasetyo, S.Pd",
-      email: "budi.math@smanjkt.sch.id",
+      name: "Budi Wijaya, S.Pd",
+      email: "teacher@smanjkt.sch.id",
       password: "teacher123",
       role: "teacher",
       schoolId: school1._id,
       teacherProfile: {
         employeeId: "T001",
-        subjects: ["Matematika", "Fisika"],
+        subjects: ["Matematika Wajib", "Fisika"],
+        subjectRefs: [matematika?._id, fisika?._id].filter(Boolean),
+        classes: [class10A._id],
+        classIds: [class10A.classId],
         qualification: "S1 Pendidikan Matematika",
       },
     });
@@ -201,11 +240,13 @@ async function seedMultiTenantData() {
     console.log("\n" + "=".repeat(80));
     console.log("\n✅ Multi-tenant seed data created successfully!");
     console.log(`   - 1 School`);
+    console.log(`   - ${subjects1.length} Subjects (Mata Pelajaran)`);
     console.log(`   - 1 Class`);
     console.log(`   - 1 School Owner`);
     console.log(`   - 1 Teacher`);
     console.log(`   - 5 Students`);
     console.log("\n🚀 You can now test the multi-tenant system!");
+    console.log("\n💡 Teacher registration will now show subject dropdown!");
 
     await mongoose.connection.close();
     console.log("\n✅ Database connection closed");

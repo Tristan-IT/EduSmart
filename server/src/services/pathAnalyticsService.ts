@@ -285,7 +285,7 @@ export async function getPathAnalytics(
     const progressDistribution: ProgressDistribution = {
       notStarted: 0,
       inProgress: progressRecords.filter(p => {
-        const completed = p.completedNodes.filter(cn => 
+        const completed = (p as any).completedNodes.filter((cn: any) => 
           nodeIds.includes(cn.nodeId.toString()) && cn.score >= 70
         ).length;
         return completed > 0 && completed < nodes.length;
@@ -312,9 +312,9 @@ export async function getPathAnalytics(
       over12Hours: 0
     };
     progressRecords.forEach(p => {
-      const totalTime = p.completedNodes
-        .filter(cn => nodeIds.includes(cn.nodeId.toString()))
-        .reduce((sum, cn) => sum + (cn.timeSpent || 0), 0) / 60; // Convert to minutes
+      const totalTime = (p as any).completedNodes
+        .filter((cn: any) => nodeIds.includes(cn.nodeId.toString()))
+        .reduce((sum: any, cn: any) => sum + (cn.timeSpent || 0), 0) / 60; // Convert to minutes
       
       if (totalTime < 60) timeDistribution.under1Hour++;
       else if (totalTime < 180) timeDistribution.between1And3Hours++;
@@ -332,7 +332,7 @@ export async function getPathAnalytics(
       poor: 0
     };
     progressRecords.forEach(p => {
-      const scores = (p.completedNodes || [])
+      const scores = ((p as any).completedNodes || [])
         .filter((cn: any) => nodeIds.includes(cn.nodeId.toString()))
         .map((cn: any) => cn.score || 0);
       
@@ -388,35 +388,35 @@ export async function getStudentPathProgress(
       subject
     }).sort({ order: 1 });
 
-    const nodeIds = nodes.map(n => n._id.toString());
+    const nodeIds = nodes.map(n => (n._id as any).toString());
 
     const progressRecords = await UserProgressModel.find({
       'completedNodes.nodeId': { $in: nodeIds }
     }).populate('userId', 'name email');
 
     const studentProgress: StudentPathProgress[] = progressRecords.map(p => {
-      const pathNodes = p.completedNodes.filter(cn => nodeIds.includes(cn.nodeId.toString()));
-      const completedNodes = pathNodes.filter(cn => cn.score >= 70);
+      const pathNodes = (p as any).completedNodes.filter((cn: any) => nodeIds.includes(cn.nodeId.toString()));
+      const completedNodes = pathNodes.filter((cn: any) => cn.score >= 70);
       
-      const totalScore = pathNodes.reduce((sum, cn) => sum + (cn.score || 0), 0);
+      const totalScore = pathNodes.reduce((sum: any, cn: any) => sum + (cn.score || 0), 0);
       const averageScore = pathNodes.length > 0 ? totalScore / pathNodes.length : 0;
       
-      const totalTimeSpent = pathNodes.reduce((sum, cn) => sum + (cn.timeSpent || 0), 0);
+      const totalTimeSpent = pathNodes.reduce((sum: any, cn: any) => sum + (cn.timeSpent || 0), 0);
       
       const lastActivity = pathNodes.length > 0
-        ? pathNodes.sort((a, b) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime())[0].completedAt
+        ? pathNodes.sort((a: any, b: any) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime())[0].completedAt
         : new Date();
       
       const daysSinceActivity = (Date.now() - new Date(lastActivity).getTime()) / (1000 * 60 * 60 * 24);
       const isStuck = daysSinceActivity > 7 && completedNodes.length < nodes.length && pathNodes.length > 0;
       
       const currentNodeIndex = completedNodes.length;
-      const currentNode = currentNodeIndex < nodes.length ? nodes[currentNodeIndex].name : undefined;
+      const currentNode = currentNodeIndex < nodes.length ? (nodes[currentNodeIndex] as any).name : undefined;
 
       const user = (p as any).userId;
 
       return {
-        studentId: p.userId.toString(),
+        studentId: (p.user as any).toString(),
         studentName: user?.name || 'Unknown',
         email: user?.email || '',
         nodesCompleted: completedNodes.length,
@@ -464,15 +464,15 @@ export async function getSubjectComparison(
     const totalStudents: Record<string, number> = {};
 
     for (const subject of subjects) {
-      const analytics = await getPathAnalytics(gradeLevel, classNumber, semester, subject);
+      const analytics = await getPathAnalytics(gradeLevel, classNumber, semester, subject.toString());
       completionRates.push(analytics.completionRate);
       averageScores.push(analytics.averageScore);
       dropoutRates.push(analytics.dropoutRate);
-      totalStudents[subject] = analytics.totalStudents;
+      totalStudents[subject.toString()] = analytics.totalStudents;
     }
 
     return {
-      subjects,
+      subjects: subjects.map(s => s.toString()),
       completionRates,
       averageScores,
       dropoutRates,

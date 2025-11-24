@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,6 +17,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AlertMessage } from "@/components/AlertMessage";
 import { apiClient } from "@/lib/apiClient";
 import { ContentCopilot } from "@/components/ContentCopilot";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { AppSidebar } from "@/components/AppSidebar";
 import {
   Save,
   Eye,
@@ -29,6 +32,7 @@ import {
   Image as ImageIcon,
   Video,
   Code,
+  FileEdit,
 } from "lucide-react";
 
 interface Question {
@@ -266,35 +270,56 @@ export default function ContentEditor() {
   }
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Content Editor</h1>
-          <p className="text-muted-foreground">
+    <SidebarProvider>
+      <AppSidebar role="teacher" />
+      <main className="flex-1 w-full">
+        {/* Header */}
+        <motion.div 
+          className="sticky top-0 z-10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b"
+          initial={{ y: -20, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ duration: 0.3 }}
+        >
+          <div className="flex h-16 items-center gap-4 px-6">
+            <SidebarTrigger />
+            <div className="flex items-center gap-3 flex-1">
+              <FileEdit className="h-5 w-5 text-primary" />
+              <h1 className="text-xl font-semibold bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
+                Content Editor
+              </h1>
+            </div>
+            <div className="flex gap-2">
+              <ContentCopilot
+                onContentGenerated={(generated) => {
+                  if (content.type === "lesson" && generated.content) {
+                    setContent({ ...content, content: generated.content });
+                  } else if (content.type === "quiz" && generated.content) {
+                    setContent({ ...content, description: generated.content });
+                  }
+                }}
+              />
+              <Button variant="outline" onClick={() => setPreviewMode(!previewMode)}>
+                <Eye className="w-4 h-4 mr-2" />
+                {previewMode ? "Edit" : "Preview"}
+              </Button>
+              <Button onClick={handleSave} disabled={saving}>
+                <Save className="w-4 h-4 mr-2" />
+                {saving ? "Saving..." : "Save Content"}
+              </Button>
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Main Content */}
+        <div className="container mx-auto px-6 py-8 max-w-7xl space-y-6">
+          <motion.p
+            className="text-muted-foreground"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}
+          >
             {templateId ? "Customize template and create your content" : "Create new learning content"}
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <ContentCopilot
-            onContentGenerated={(generated) => {
-              if (content.type === "lesson" && generated.content) {
-                setContent({ ...content, content: generated.content });
-              } else if (content.type === "quiz" && generated.content) {
-                setContent({ ...content, description: generated.content });
-              }
-            }}
-          />
-          <Button variant="outline" onClick={() => setPreviewMode(!previewMode)}>
-            <Eye className="w-4 h-4 mr-2" />
-            {previewMode ? "Edit" : "Preview"}
-          </Button>
-          <Button onClick={handleSave} disabled={saving}>
-            <Save className="w-4 h-4 mr-2" />
-            {saving ? "Saving..." : "Save Content"}
-          </Button>
-        </div>
-      </div>
+          </motion.p>
 
       {/* Alerts */}
       {error && <AlertMessage type="danger" message={error} onClose={() => setError(null)} />}
@@ -709,6 +734,8 @@ export default function ContentEditor() {
           </Card>
         </TabsContent>
       </Tabs>
-    </div>
+        </div>
+      </main>
+    </SidebarProvider>
   );
 }

@@ -8,6 +8,138 @@ import { signAccessToken } from "../utils/token.js";
 import type { Types } from "mongoose";
 
 /**
+ * Student Login
+ */
+export const loginStudent = async (req: Request, res: Response) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Email and password are required",
+      });
+    }
+
+    // Find student
+    const student = await UserModel.findOne({ email, role: "student" });
+    if (!student) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid credentials",
+      });
+    }
+
+    // Verify password
+    const isValid = await bcryptjs.compare(password, student.passwordHash || '');
+    if (!isValid) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid credentials",
+      });
+    }
+
+    // Generate token
+    const token = signAccessToken({
+      sub: (student._id as Types.ObjectId).toString(),
+      role: student.role,
+      name: student.name,
+      email: student.email,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Login successful",
+      token,
+      user: {
+        id: student._id,
+        name: student.name,
+        email: student.email,
+        role: student.role,
+        avatar: student.avatar,
+        schoolId: student.schoolId,
+        schoolName: student.schoolName,
+        classId: student.classId,
+        className: student.className,
+      },
+    });
+  } catch (error) {
+    console.error("Student login error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+/**
+ * Validate Class ID
+ * Public endpoint to check if class exists and get basic info
+ */
+export const validateClassId = async (req: Request, res: Response) => {
+  try {
+    const { classId } = req.params;
+
+    if (!classId) {
+      return res.status(400).json({
+        success: false,
+        message: "Class ID is required",
+      });
+    }
+
+    // Find class
+    const classData = await ClassModel.findOne({ classId }).populate("school");
+    
+    if (!classData) {
+      return res.status(404).json({
+        success: false,
+        message: "Class not found",
+      });
+    }
+
+    if (!classData.isActive) {
+      return res.status(400).json({
+        success: false,
+        message: "Class is inactive",
+      });
+    }
+
+    const school = classData.school as any;
+    if (!school || !school.isActive) {
+      return res.status(400).json({
+        success: false,
+        message: "School is inactive",
+      });
+    }
+
+    // Check if class is full
+    const isFull = classData.currentStudents >= classData.maxStudents;
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        classId: classData.classId,
+        className: classData.className,
+        displayName: classData.displayName,
+        grade: classData.grade,
+        section: classData.section,
+        schoolId: school.schoolId,
+        schoolName: school.schoolName,
+        currentStudents: classData.currentStudents,
+        maxStudents: classData.maxStudents,
+        isFull,
+      },
+    });
+  } catch (error) {
+    console.error("Validate class ID error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
+
+/**
  * Enhanced Student Registration
  * Requires Class ID for multi-tenant system
  */
@@ -164,11 +296,12 @@ export const registerStudent = async (req: Request, res: Response) => {
       role: student.role,
       name: student.name,
       email: student.email,
-    });
+    }, "7d");
 
     return res.status(201).json({
       success: true,
       message: "Student registered successfully",
+      token,
       user: {
         id: student._id,
         name: student.name,
@@ -182,7 +315,6 @@ export const registerStudent = async (req: Request, res: Response) => {
         studentId: student.studentId,
         avatar: student.avatar,
       },
-      token,
     });
   } catch (error: any) {
     console.error("Error registering student:", error);

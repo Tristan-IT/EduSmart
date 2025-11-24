@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
+import { motion } from "framer-motion";
 import { EnhancedSkillTree, type SkillTreeNode } from "@/components/EnhancedSkillTree";
-import { Card } from "@/components/ui/card";
-import { Loader2, AlertCircle } from "lucide-react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Loader2, AlertCircle, Network, BookOpen, Trophy, Target } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useNavigate } from "react-router-dom";
 import { apiClient } from "@/lib/apiClient";
@@ -10,6 +11,9 @@ import RewardsModal from "@/components/RewardsModal";
 import { useAchievements } from "@/hooks/useAchievements";
 import { AchievementUnlock } from "@/components/AchievementUnlock";
 import { NodePreviewModal } from "@/components/NodePreviewModal";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { AppSidebar } from "@/components/AppSidebar";
+import { Badge } from "@/components/ui/badge";
 
 export function SkillTreePage() {
   const [nodes, setNodes] = useState<SkillTreeNode[]>([]);
@@ -37,7 +41,7 @@ export function SkillTreePage() {
       const response = await apiClient.get<{
         nodes: any[];
         stats: any;
-      }>('/api/progress/skill-tree');
+      }>('/progress/skill-tree');
 
       if (response) {
         const { nodes: progressNodes, stats } = response;
@@ -97,7 +101,7 @@ export function SkillTreePage() {
       setError(null);
       
       // First, unlock the node (or mark as in-progress)
-      await apiClient.post('/api/progress/skill-tree/unlock', {
+      await apiClient.post('/progress/skill-tree/unlock', {
         nodeId: node.id
       });
       
@@ -138,7 +142,7 @@ export function SkillTreePage() {
           context: any;
           unlocked: string[];
         };
-      }>('/api/progress/skill-tree/complete', {
+      }>('/progress/skill-tree/complete', {
         nodeId,
         score,
         timeSpent
@@ -178,63 +182,195 @@ export function SkillTreePage() {
     // Could auto-navigate to next recommended node
   };
 
+  // Calculate stats
+  const totalNodes = nodes.length;
+  const completedNodes = nodes.filter(n => n.status === 'completed').length;
+  const inProgressNodes = nodes.filter(n => n.status === 'in-progress').length;
+  const completionRate = totalNodes > 0 ? Math.round((completedNodes / totalNodes) * 100) : 0;
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Card className="p-8 flex flex-col items-center gap-4">
-          <Loader2 className="w-12 h-12 animate-spin text-primary" />
-          <p className="text-muted-foreground">Memuat Skill Tree...</p>
-        </Card>
-      </div>
+      <SidebarProvider>
+        <AppSidebar role="student" />
+        <main className="flex-1 w-full">
+          <div className="flex items-center justify-center min-h-screen">
+            <Card className="p-8 flex flex-col items-center gap-4">
+              <Loader2 className="w-12 h-12 animate-spin text-primary" />
+              <p className="text-muted-foreground">Memuat Skill Tree...</p>
+            </Card>
+          </div>
+        </main>
+      </SidebarProvider>
     );
   }
 
   if (error) {
     return (
-      <div className="container mx-auto p-6 max-w-2xl">
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>
-            {error}
-          </AlertDescription>
-        </Alert>
-        <button 
-          onClick={fetchSkillTreeData}
-          className="mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
-        >
-          Coba Lagi
-        </button>
-      </div>
+      <SidebarProvider>
+        <AppSidebar role="student" />
+        <main className="flex-1 w-full">
+          <div className="container mx-auto p-6 max-w-2xl">
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                {error}
+              </AlertDescription>
+            </Alert>
+            <button 
+              onClick={fetchSkillTreeData}
+              className="mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
+            >
+              Coba Lagi
+            </button>
+          </div>
+        </main>
+      </SidebarProvider>
     );
   }
 
   if (nodes.length === 0) {
     return (
-      <div className="container mx-auto p-6 max-w-2xl">
-        <Card className="p-8 text-center">
-          <p className="text-muted-foreground">
-            Belum ada skill tree yang tersedia. Silakan hubungi administrator.
-          </p>
-        </Card>
-      </div>
+      <SidebarProvider>
+        <AppSidebar role="student" />
+        <main className="flex-1 w-full">
+          <div className="container mx-auto p-6 max-w-2xl">
+            <Card className="p-8 text-center">
+              <p className="text-muted-foreground">
+                Belum ada skill tree yang tersedia. Silakan hubungi administrator.
+              </p>
+            </Card>
+          </div>
+        </main>
+      </SidebarProvider>
     );
   }
 
   return (
-    <div className="container mx-auto p-6 space-y-4">
-      {/* Alerts */}
-      {error && <AlertMessage type="danger" message={error} onClose={() => setError(null)} />}
-      {success && <AlertMessage type="success" message={success} onClose={() => setSuccess(null)} />}
+    <SidebarProvider>
+      <AppSidebar role="student" />
+      <main className="flex-1 w-full">
+        {/* Header */}
+        <motion.div 
+          className="sticky top-0 z-10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b"
+          initial={{ y: -20, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ duration: 0.3 }}
+        >
+          <div className="flex h-16 items-center gap-4 px-6">
+            <SidebarTrigger />
+            <div className="flex items-center gap-3 flex-1">
+              <Network className="h-5 w-5 text-primary" />
+              <h1 className="text-xl font-semibold bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
+                Skill Tree Siswa
+              </h1>
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Main Content */}
+        <div className="container px-6 py-8 max-w-7xl mx-auto space-y-6">
+          {/* Stats Cards */}
+          <div className="grid gap-4 md:grid-cols-4">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, delay: 0.1 }}
+            >
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Total Nodes</CardTitle>
+                  <Target className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{totalNodes}</div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Semua skill nodes
+                  </p>
+                </CardContent>
+              </Card>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, delay: 0.2 }}
+            >
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Selesai</CardTitle>
+                  <Trophy className="h-4 w-4 text-success" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-success">{completedNodes}</div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Nodes completed
+                  </p>
+                </CardContent>
+              </Card>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, delay: 0.3 }}
+            >
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Sedang Berjalan</CardTitle>
+                  <BookOpen className="h-4 w-4 text-primary" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-primary">{inProgressNodes}</div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Nodes in progress
+                  </p>
+                </CardContent>
+              </Card>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, delay: 0.4 }}
+            >
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">Completion Rate</CardTitle>
+                  <Network className="h-4 w-4 text-purple-600" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-purple-600">{completionRate}%</div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Overall progress
+                  </p>
+                </CardContent>
+              </Card>
+            </motion.div>
+          </div>
+
+          {/* Alerts */}
+          {error && <AlertMessage type="danger" message={error} onClose={() => setError(null)} />}
+          {success && <AlertMessage type="success" message={success} onClose={() => setSuccess(null)} />}
+          
+          {/* Skill Tree */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.5 }}
+          >
+            <Card className="p-6">
+              <EnhancedSkillTree
+                nodes={nodes}
+                userProgress={userProgress}
+                onNodeClick={handleNodeClick}
+                onStartQuiz={handleStartQuiz}
+              />
+            </Card>
+          </motion.div>
+        </div>
+      </main>
       
-      {/* Skill Tree */}
-      <EnhancedSkillTree
-        nodes={nodes}
-        userProgress={userProgress}
-        onNodeClick={handleNodeClick}
-        onStartQuiz={handleStartQuiz}
-      />
-      
-      {/* Rewards Modal */}
+      {/* Modals */}
       {showRewards && rewardsData && (
         <RewardsModal
           isOpen={showRewards}
@@ -246,6 +382,16 @@ export function SkillTreePage() {
           nodeName={selectedNode?.name || 'Node'}
         />
       )}
-    </div>
+      
+      {showPreview && selectedNode && (
+        <NodePreviewModal
+          isOpen={showPreview}
+          onClose={() => setShowPreview(false)}
+          node={selectedNode}
+          onViewLesson={handleViewLesson}
+          onStartQuiz={handleStartQuizFromPreview}
+        />
+      )}
+    </SidebarProvider>
   );
 }

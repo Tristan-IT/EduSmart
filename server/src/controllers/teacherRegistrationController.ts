@@ -5,6 +5,71 @@ import UserModel from "../models/User.js";
 import { TeacherProfileModel } from "../models/TeacherProfile.js";
 import { signAccessToken } from "../utils/token.js";
 import type { Types } from "mongoose";
+import { notifyNewTeacher } from "../services/notificationService.js";
+
+/**
+ * Teacher Login
+ */
+export const loginTeacher = async (req: Request, res: Response) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Email and password are required",
+      });
+    }
+
+    // Find teacher
+    const teacher = await UserModel.findOne({ email, role: "teacher" });
+    if (!teacher) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid credentials",
+      });
+    }
+
+    // Verify password
+    const isValid = await bcryptjs.compare(password, teacher.passwordHash || '');
+    if (!isValid) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid credentials",
+      });
+    }
+
+    // Generate token
+    const token = signAccessToken({
+      sub: (teacher._id as Types.ObjectId).toString(),
+      role: teacher.role,
+      name: teacher.name,
+      email: teacher.email,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Login successful",
+      token,
+      user: {
+        id: teacher._id,
+        name: teacher.name,
+        email: teacher.email,
+        role: teacher.role,
+        avatar: teacher.avatar,
+        schoolId: teacher.schoolId,
+        schoolName: teacher.schoolName,
+        classIds: teacher.teacherProfile?.classIds || [],
+      },
+    });
+  } catch (error) {
+    console.error("Teacher login error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
 
 /**
  * Enhanced Teacher Registration
@@ -28,6 +93,7 @@ export const registerTeacher = async (req: Request, res: Response) => {
       qualification,
       yearsOfExperience,
       specialization,
+      classIds, // Array of class IDs
     } = req.body;
 
     // Validation
@@ -70,6 +136,55 @@ export const registerTeacher = async (req: Request, res: Response) => {
     // Hash password
     const passwordHash = await bcryptjs.hash(password, 10);
 
+    // Validate and resolve subjectRefs
+    const SubjectModel = (await import("../models/Subject.js")).default;
+    const subjectNames = subjects || [];
+    const subjectObjectIds: Types.ObjectId[] = [];
+    
+    if (subjectNames.length > 0) {
+      // Find subjects by name in this school
+      const foundSubjects = await SubjectModel.find({
+        school: school._id,
+        name: { $in: subjectNames },
+        isActive: true,
+      });
+      
+      subjectObjectIds.push(...foundSubjects.map(s => s._id as Types.ObjectId));
+      
+      // Log if some subjects not found
+      if (foundSubjects.length !== subjectNames.length) {
+        console.log("Some subjects not found in database:", 
+          subjectNames.filter((name: string) => !foundSubjects.some(s => s.name === name))
+        );
+      }
+    }
+
+    // Validate classIds if provided
+    const teacherClassIds = classIds || [];
+    const classObjectIds: Types.ObjectId[] = [];
+    
+    if (teacherClassIds.length > 0) {
+      // Import ClassModel
+      const ClassModel = (await import("../models/Class.js")).default;
+      
+      // Validate all classIds belong to this school
+      const classes = await ClassModel.find({
+        classId: { $in: teacherClassIds },
+        school: school._id,
+        isActive: true,
+      });
+      
+      if (classes.length !== teacherClassIds.length) {
+        return res.status(400).json({
+          success: false,
+          message: "One or more class IDs are invalid or do not belong to this school",
+        });
+      }
+      
+      // Get ObjectIds
+      classObjectIds.push(...classes.map(c => c._id as Types.ObjectId));
+    }
+
     // Create teacher user
     const teacher = await UserModel.create({
       name,
@@ -83,13 +198,21 @@ export const registerTeacher = async (req: Request, res: Response) => {
       schoolName: school.schoolName,
       teacherProfile: {
         employeeId,
-        subjects: subjects || [],
-        classes: [],
-        classIds: [],
+        subjects: subjectNames,
+        subjectRefs: subjectObjectIds,
+        classes: classObjectIds,
+        classIds: teacherClassIds,
         qualification,
         yearsOfExperience,
         specialization,
       },
+    });
+    
+    console.log(`[Teacher Registration] Created teacher:`, {
+      name: teacher.name,
+      email: teacher.email,
+      subjectCount: subjectObjectIds.length,
+      classCount: classObjectIds.length,
     });
 
     // Create separate TeacherProfile (if you have this model)
@@ -107,17 +230,38 @@ export const registerTeacher = async (req: Request, res: Response) => {
     school.totalTeachers = (school.totalTeachers || 0) + 1;
     await school.save();
 
+    // Notify school owner about new teacher registration
+    try {
+      const schoolOwner = await UserModel.findOne({
+        school: school._id,
+        role: "school_owner",
+      });
+
+      if (schoolOwner) {
+        await notifyNewTeacher(
+          (schoolOwner._id as Types.ObjectId).toString(),
+          teacher.name,
+          (teacher._id as Types.ObjectId).toString()
+        );
+        console.log(`[Notification] School owner notified about new teacher: ${teacher.name}`);
+      }
+    } catch (notifError) {
+      console.error("Failed to send notification:", notifError);
+      // Don't fail registration if notification fails
+    }
+
     // Generate JWT token
     const token = signAccessToken({
       sub: (teacher._id as any).toString(),
       role: teacher.role,
       name: teacher.name,
       email: teacher.email,
-    });
+    }, "7d");
 
     return res.status(201).json({
       success: true,
       message: "Teacher registered successfully",
+      token,
       user: {
         id: teacher._id,
         name: teacher.name,
@@ -128,10 +272,18 @@ export const registerTeacher = async (req: Request, res: Response) => {
         avatar: teacher.avatar,
         teacherProfile: teacher.teacherProfile,
       },
-      token,
     });
   } catch (error: any) {
     console.error("Error registering teacher:", error);
+    
+    // Handle duplicate email error
+    if (error.code === 11000 && error.keyPattern?.email) {
+      return res.status(400).json({
+        success: false,
+        message: "Email sudah terdaftar. Gunakan email lain atau login jika Anda sudah memiliki akun.",
+      });
+    }
+    
     return res.status(500).json({
       success: false,
       message: "Failed to register teacher",

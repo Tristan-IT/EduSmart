@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
+import { useState, useEffect } from "react";
 
 interface MenuItem {
   title: string;
@@ -34,6 +35,34 @@ export function AppSidebar({ role }: AppSidebarProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const { logout } = useAuth();
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    fetchUnreadCount();
+    // Refresh every 30 seconds
+    const interval = setInterval(fetchUnreadCount, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const fetchUnreadCount = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) return;
+      
+      const response = await fetch("http://localhost:5000/api/notifications/unread-count", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setUnreadCount(data.unreadCount || 0);
+      }
+    } catch (error) {
+      console.error("Error fetching unread count:", error);
+    }
+  };
 
   const handleLogout = () => {
     logout();
@@ -50,22 +79,22 @@ export function AppSidebar({ role }: AppSidebarProps) {
     { title: "Chat AI", url: "/ai-chat", icon: Sparkles },
     { title: "Leaderboard", url: "/leaderboard", icon: Trophy },
     { title: "Pencarian", url: "/search", icon: Search },
-    { title: "Notifikasi", url: "/notifikasi", icon: Bell, badge: 3 },
-    { title: "Profil", url: "/profil", icon: User },
+    { title: "Notifikasi", url: "/notifikasi", icon: Bell, badge: unreadCount || undefined },
+    { title: "Profil", url: "/student/profile", icon: User },
+    { title: "Pengaturan", url: "/student/settings", icon: Settings },
   ];
 
   const teacherItems: MenuItem[] = [
     { title: "Dashboard", url: "/dashboard-guru", icon: Home },
-    { title: "Materi", url: "/konten", icon: BookOpen },
+    { title: "Perpustakaan Konten", url: "/konten", icon: BookOpen },
+    { title: "Template Library", url: "/teacher/templates", icon: FolderOpen },
     { title: "Skill Tree", url: "/teacher/skill-tree-management", icon: Network },
     { title: "Kalibrasi", url: "/calibration", icon: Gauge },
-    { title: "Analitik", url: "/analytics", icon: BarChart3 },
+    { title: "Analitik", url: "/teacher-analytics", icon: BarChart3 },
     { title: "Tema", url: "/theme-customization", icon: Palette },
-    { title: "Template Library", url: "/teacher/templates", icon: FolderOpen },
-    { title: "Content Editor", url: "/teacher/content-editor", icon: FileEdit },
-    { title: "Upload Content", url: "/teacher/upload-content", icon: Upload },
-    { title: "Laporan", url: "/laporan", icon: TrendingUp },
+    { title: "Notifikasi", url: "/teacher/notifications", icon: Bell, badge: unreadCount || undefined },
     { title: "Profil", url: "/profil-guru", icon: User },
+    { title: "Pengaturan", url: "/teacher/settings", icon: Settings },
   ];
 
   const schoolOwnerItems: MenuItem[] = [
@@ -73,9 +102,10 @@ export function AppSidebar({ role }: AppSidebarProps) {
     { title: "Guru", url: "/teachers", icon: Users },
     { title: "Kelas", url: "/classes", icon: BookOpen },
     { title: "Mata Pelajaran", url: "/subjects", icon: GraduationCap },
-    { title: "Analitik", url: "/analytics", icon: BarChart3 },
-    { title: "Pengaturan", url: "/settings", icon: Settings },
+    { title: "Analitik", url: "/school-analytics", icon: BarChart3 },
+    { title: "Notifikasi", url: "/school-owner/notifications", icon: Bell, badge: unreadCount || undefined },
     { title: "Profil", url: "/profile", icon: User },
+    { title: "Pengaturan", url: "/settings", icon: Settings },
   ];
 
   const items = role === 'student' ? studentItems : role === 'teacher' ? teacherItems : schoolOwnerItems;
@@ -168,7 +198,7 @@ export function AppSidebar({ role }: AppSidebarProps) {
                         </span>
                         
                         {/* Badge */}
-                        {item.badge && !isCollapsed && (
+                        {item.badge && item.badge > 0 && !isCollapsed && (
                           <motion.span
                             className="flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1.5 text-xs font-medium text-destructive-foreground"
                             initial={{ scale: 0 }}
@@ -180,7 +210,7 @@ export function AppSidebar({ role }: AppSidebarProps) {
                         )}
                         
                         {/* Badge dot when collapsed */}
-                        {item.badge && isCollapsed && (
+                        {item.badge && item.badge > 0 && isCollapsed && (
                           <motion.span
                             className="absolute -top-1 -right-1 flex h-2 w-2"
                             initial={{ scale: 0 }}

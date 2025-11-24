@@ -17,6 +17,7 @@ import SchoolOwnerStudents from "./pages/SchoolOwnerStudents";
 import SchoolOwnerAnalytics from "./pages/SchoolOwnerAnalytics";
 import SchoolOwnerSettings from "./pages/SchoolOwnerSettings";
 import SchoolOwnerProfile from "./pages/SchoolOwnerProfile";
+import SchoolOwnerNotifications from "./pages/SchoolOwnerNotifications";
 import SchoolSetup from "./pages/SchoolSetup";
 import SubjectManagement from "./pages/SubjectManagement";
 import QuizPlayer from "./pages/QuizPlayer";
@@ -24,6 +25,10 @@ import QuizCategories from "./pages/QuizCategories";
 import LessonDetail from "./pages/LessonDetail";
 import Profile from "./pages/Profile";
 import TeacherProfile from "./pages/TeacherProfile";
+import TeacherSettings from "./pages/TeacherSettings";
+import TeacherNotifications from "./pages/TeacherNotifications";
+import StudentProfile from "./pages/StudentProfile";
+import StudentSettings from "./pages/StudentSettings";
 import Notifications from "./pages/Notifications";
 import Search from "./pages/Search";
 import Leaderboard from "./pages/Leaderboard";
@@ -48,7 +53,8 @@ import ClassSelectionOnboarding from "./pages/ClassSelectionOnboarding";
 import LessonViewer from "./pages/LessonViewer";
 import RecommendationsPage from "./pages/RecommendationsPage";
 import CalibrationPage from "./pages/CalibrationPage";
-import AnalyticsPage from "./pages/AnalyticsPage";
+import TeacherAnalyticsPage from "./pages/TeacherAnalyticsPage";
+import TeacherAnalyticsComplete from "./pages/TeacherAnalyticsComplete";
 import ThemeCustomizationPage from "./pages/ThemeCustomizationPage";
 import ProtectedRoute from "@/components/ProtectedRoute";
 
@@ -112,7 +118,7 @@ const App = () => (
               }
             />
             <Route
-              path="/analytics"
+              path="/school-analytics"
               element={
                 <ProtectedRoute allowRoles={["school_owner"]}>
                   <SchoolOwnerAnalytics />
@@ -132,6 +138,14 @@ const App = () => (
               element={
                 <ProtectedRoute allowRoles={["school_owner"]}>
                   <SchoolOwnerProfile />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/school-owner/notifications"
+              element={
+                <ProtectedRoute allowRoles={["school_owner"]}>
+                  <SchoolOwnerNotifications />
                 </ProtectedRoute>
               }
             />
@@ -161,10 +175,42 @@ const App = () => (
               }
             />
             <Route
+              path="/teacher/settings"
+              element={
+                <ProtectedRoute allowRoles={["teacher"]}>
+                  <TeacherSettings />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/teacher/notifications"
+              element={
+                <ProtectedRoute allowRoles={["teacher"]}>
+                  <TeacherNotifications />
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/student-dashboard"
               element={
                 <ProtectedRoute allowRoles={["student"]}>
                   <StudentDashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/student/profile"
+              element={
+                <ProtectedRoute allowRoles={["student"]}>
+                  <StudentProfile />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/student/settings"
+              element={
+                <ProtectedRoute allowRoles={["student"]}>
+                  <StudentSettings />
                 </ProtectedRoute>
               }
             />
@@ -179,13 +225,20 @@ const App = () => (
             <Route
               path="/dashboard-guru"
               element={
-                <ProtectedRoute allowRoles={["teacher", "admin"]}>
+                <ProtectedRoute allowRoles={["teacher", "admin", "school_owner"]}>
                   <TeacherDashboard />
                 </ProtectedRoute>
               }
             />
           <Route path="/onboarding" element={<Onboarding />} />
-          <Route path="/konten" element={<ContentLibrary />} />
+          <Route 
+            path="/konten" 
+            element={
+              <ProtectedRoute allowRoles={["teacher", "school_owner", "admin"]}>
+                <ContentLibrary />
+              </ProtectedRoute>
+            } 
+          />
           <Route path="/konten/:id" element={<ContentDetail />} />
           <Route path="/admin" element={<AdminSettings />} />
           <Route path="/admin/analytics" element={<AdminAnalytics />} />
@@ -208,7 +261,14 @@ const App = () => (
           <Route path="/notifikasi" element={<Notifications />} />
           <Route path="/search" element={<Search />} />
           <Route path="/leaderboard" element={<Leaderboard />} />
-          <Route path="/skill-tree" element={<SkillTreePage />} />
+          <Route 
+            path="/skill-tree" 
+            element={
+              <ProtectedRoute allowRoles={["student"]}>
+                <SkillTreePage />
+              </ProtectedRoute>
+            } 
+          />
           <Route path="/recommendations" element={<RecommendationsPage />} />
           <Route 
             path="/calibration" 
@@ -219,10 +279,10 @@ const App = () => (
             } 
           />
           <Route 
-            path="/analytics" 
+            path="/teacher-analytics" 
             element={
-              <ProtectedRoute allowRoles={["teacher", "school_owner"]}>
-                <AnalyticsPage />
+              <ProtectedRoute allowRoles={["teacher"]}>
+                <TeacherAnalyticsComplete />
               </ProtectedRoute>
             } 
           />

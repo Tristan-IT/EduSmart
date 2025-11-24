@@ -1,8 +1,10 @@
 import QuizQuestionModel from "../models/QuizQuestion.js";
 import StudentProfileModel from "../models/StudentProfile.js";
+import UserModel from "../models/User.js";
 import { Types } from "mongoose";
 import { addXP, updateStreak, checkAchievements } from "./gamificationService.js";
 import { updateQuizProgress } from "./progressService.js";
+import { notifyQuizCompleted } from "./notificationService.js";
 
 interface QuizSubmission {
   topicId: string;
@@ -127,6 +129,30 @@ export async function submitQuiz(
 
     // Check achievements
     await checkAchievements(userId);
+
+    // Notify teacher about quiz completion (if teacher is assigned)
+    try {
+      const student = await UserModel.findById(userId).select('name teacherProfile.classes');
+      if (student) {
+        // Find teachers of student's classes
+        const teachers = await UserModel.find({
+          role: 'teacher',
+          'teacherProfile.classes': { $in: student.teacherProfile?.classes || [] },
+        }).select('_id');
+
+        // Notify each teacher
+        for (const teacher of teachers) {
+          await notifyQuizCompleted(
+            (teacher._id as any).toString(),
+            student.name,
+            topicId,
+            scorePercentage
+          );
+        }
+      }
+    } catch (notifError) {
+      console.error('Failed to send quiz notification:', notifError);
+    }
 
     // Update StudentSubjectProgress if quiz has a subject
     if (questions.length > 0 && questions[0].subject) {

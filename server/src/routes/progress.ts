@@ -15,6 +15,8 @@ import {
   getRecommendations,
   getSubjectRecommendations,
   getSkillTreeStats,
+  getMyProgress,
+  getStudentStats,
 } from "../controllers/progressController.js";
 import { authenticate } from "../middleware/authenticate.js";
 
@@ -26,6 +28,8 @@ const router = Router();
  */
 
 // GET endpoints - View progress
+router.get("/stats", authenticate, getStudentStats);
+router.get("/student/me", authenticate, getMyProgress);
 router.get("/student/:studentId", authenticate, getStudentProgressController);
 router.get("/class/:classId/subject/:subjectId", authenticate, getClassProgressController);
 router.get("/school/:schoolId", authenticate, getSchoolProgressController);

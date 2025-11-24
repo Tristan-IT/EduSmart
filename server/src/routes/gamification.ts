@@ -7,6 +7,7 @@ import {
   spendGemsController,
   getGemHistoryController,
   checkAchievementsController,
+  getLeaderboard,
 } from "../controllers/gamificationController.js";
 
 const router = Router();
@@ -29,5 +30,8 @@ router.get("/gems/history", getGemHistoryController);
 
 // Achievements
 router.post("/achievements/check", checkAchievementsController);
+
+// Leaderboard
+router.get("/leaderboard", getLeaderboard);
 
 export default router;

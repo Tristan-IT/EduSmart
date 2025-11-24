@@ -65,8 +65,8 @@ const Login = () => {
         throw new Error(data.message || "Login gagal");
       }
 
-      // Store schoolId for school owner
-      if (loginType === "school" && data.user.schoolId) {
+      // Store schoolId for school owner (regardless of login type)
+      if (data.user.schoolId) {
         localStorage.setItem("schoolId", data.user.schoolId);
       }
 
@@ -90,10 +90,10 @@ const Login = () => {
 
       toast.success("Login berhasil!");
 
-      // Navigate based on role
-      if (loginType === "school") {
+      // Navigate based on user role
+      if (data.user.role === "school_owner") {
         navigate("/school-owner-dashboard");
-      } else if (loginType === "teacher") {
+      } else if (data.user.role === "teacher") {
         navigate("/teacher-dashboard");
       } else {
         navigate("/student-dashboard");

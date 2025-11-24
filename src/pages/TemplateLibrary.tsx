@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -11,10 +12,12 @@ import {
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Search, Filter, BookOpen, FileQuestion, Video, FileText, Eye, Download, Plus } from "lucide-react";
+import { Search, Filter, BookOpen, FileQuestion, Video, FileText, Eye, Download, Plus, Library } from "lucide-react";
 import { apiClient } from "@/lib/apiClient";
 import { AlertMessage } from "@/components/AlertMessage";
 import TemplatePreviewModal from "@/components/TemplatePreviewModal";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { AppSidebar } from "@/components/AppSidebar";
 
 interface Template {
   _id: string;
@@ -245,20 +248,41 @@ export default function TemplateLibrary() {
   };
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Template Library</h1>
-          <p className="text-muted-foreground">
+    <SidebarProvider>
+      <AppSidebar role="teacher" />
+      <main className="flex-1 w-full">
+        {/* Header */}
+        <motion.div 
+          className="sticky top-0 z-10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b"
+          initial={{ y: -20, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ duration: 0.3 }}
+        >
+          <div className="flex h-16 items-center gap-4 px-6">
+            <SidebarTrigger />
+            <div className="flex items-center gap-3 flex-1">
+              <Library className="h-5 w-5 text-primary" />
+              <h1 className="text-xl font-semibold bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
+                Template Library
+              </h1>
+            </div>
+            <Button onClick={() => (window.location.href = "/teacher/upload-content")}>
+              <Plus className="w-4 h-4 mr-2" />
+              Upload Custom
+            </Button>
+          </div>
+        </motion.div>
+
+        {/* Main Content */}
+        <div className="container mx-auto px-6 py-8 max-w-7xl space-y-6">
+          <motion.p
+            className="text-muted-foreground"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}
+          >
             Browse and use pre-made lesson templates, quizzes, and learning materials
-          </p>
-        </div>
-        <Button onClick={() => (window.location.href = "/teacher/upload-content")}>
-          <Plus className="w-4 h-4 mr-2" />
-          Upload Custom
-        </Button>
-      </div>
+          </motion.p>
 
       {/* Alerts */}
       {error && <AlertMessage type="danger" message={error} onClose={() => setError(null)} />}
@@ -410,7 +434,16 @@ export default function TemplateLibrary() {
           }}
         />
       )}
-    </div>
+        </div>
+      </main>
+      
+      {/* Preview Modal */}
+      <TemplatePreviewModal
+        isOpen={isPreviewOpen}
+        onClose={() => setIsPreviewOpen(false)}
+        template={previewTemplate}
+      />
+    </SidebarProvider>
   );
 }
 

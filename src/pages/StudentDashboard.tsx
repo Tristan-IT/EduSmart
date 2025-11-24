@@ -28,7 +28,6 @@ import {
 import { SkeletonCard, SkeletonDashboard } from "@/components/ui/skeleton-loader";
 import { LeagueProgress } from "@/components/LeagueProgress";
 import type { LeagueUser } from "@/data/leagueSystem";
-import { mockStudents } from "@/data/mockData";
 import { useLeagueSystem } from "@/hooks/useLeagueSystem";
 import { LeaguePromotionModal, LeagueDemotionModal, LeagueStayModal } from "@/components/LeagueModals";
 import { algebraModules, geometryModules, statisticsModules } from "@/data/learningModules";
@@ -36,12 +35,34 @@ import { useAuth } from "@/context/AuthContext";
 import { useSubject } from "@/context/SubjectContext";
 import { SubjectSelector } from "@/components/SubjectSelector";
 import { toast } from "sonner";
+import { apiClient } from "@/lib/apiClient";
+
+interface StudentProfile {
+  _id: string;
+  name: string;
+  email: string;
+  studentId?: string;
+  currentGrade?: string;
+  currentClass?: number;
+  currentSemester?: number;
+  major?: string;
+}
+
+interface ProgressStats {
+  averageMastery: number;
+  masteryPerTopic: Record<string, number>;
+  completedTopics: number;
+  totalTopics: number;
+  streak: number;
+  bestStreak: number;
+}
 
 const StudentDashboard = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { selectedSubject, subjects } = useSubject();
-  const currentStudent = mockStudents[0];
+  const [studentProfile, setStudentProfile] = useState<StudentProfile | null>(null);
+  const [progressStats, setProgressStats] = useState<ProgressStats | null>(null);
   const [profile, setProfile] = useState<GamificationProfile | null>(null);
   const [skillTree, setSkillTree] = useState<SkillTreeNode[]>([]);
   
@@ -70,20 +91,31 @@ const StudentDashboard = () => {
     let mounted = true;
     const hydrate = async () => {
       try {
-        const [profileResponse, treeResponse, recommendationResponse, rewardResponse] = await Promise.all([
+        const [
+          studentProfileRes,
+          profileResponse,
+          treeResponse,
+          progressRes,
+          recommendationResponse,
+          rewardResponse
+        ] = await Promise.all([
+          apiClient.get<StudentProfile>("/student/profile"),
           realApi.getGamifiedProfile(),
           realApi.getSkillTree(),
+          apiClient.get<ProgressStats>("/progress/stats"),
           getAiRecommendations(),
           getAiRewards(),
         ]);
         if (!mounted) return;
+        setStudentProfile((studentProfileRes as any)?.data || studentProfileRes);
         setProfile(profileResponse);
         setSkillTree(treeResponse);
+        setProgressStats((progressRes as any)?.data || progressRes);
         setAiRecommendationError(null);
         setAiRecommendations(recommendationResponse);
         setAiRewards(rewardResponse);
       } catch (error) {
-        // silently ignore for now; UI still renders fallback data
+        console.error("Failed to load dashboard data:", error);
         setAiRecommendationError("Rekomendasi AI tidak tersedia saat ini.");
       }
     };
@@ -93,10 +125,7 @@ const StudentDashboard = () => {
     };
   }, []);
 
-  const overallMastery = Math.round(
-    Object.values(currentStudent.masteryPerTopic).reduce((a, b) => a + b, 0) / 
-    Object.values(currentStudent.masteryPerTopic).length
-  );
+  const overallMastery = progressStats?.averageMastery ?? 0;
 
   const currentUnit = useMemo(() => {
     // TODO: Update to use SkillTreeNode structure from API
@@ -170,7 +199,7 @@ const StudentDashboard = () => {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5 }}
             >
-              Selamat Datang, {currentStudent.name}! 👋
+              Selamat Datang, {studentProfile?.name || user?.name}! 👋
             </motion.h1>
             <motion.p 
               className="text-muted-foreground text-lg"
@@ -271,7 +300,7 @@ const StudentDashboard = () => {
                       animate={{ opacity: 1, scale: 1 }}
                       transition={{ type: "spring", delay: 0.4 }}
                     >
-                      {profile?.streak ?? currentStudent.streak} hari
+                      {profile?.streak ?? progressStats?.streak ?? 0} hari
                     </motion.div>
                     <p className="text-xs text-muted-foreground mt-1.5 flex items-center gap-1">
                       <span className="text-warning font-semibold">🔥 Pertahankan</span> momentum!
@@ -580,10 +609,10 @@ const StudentDashboard = () => {
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <XPBar
-                    currentXP={profile?.xpInLevel ?? currentStudent.dailyGoalProgress}
-                    xpForNextLevel={profile?.xpForNextLevel ?? currentStudent.dailyGoalXP}
-                    level={profile?.level ?? currentStudent.level}
-                    title={`Liga ${profile?.league?.toUpperCase() ?? currentStudent.league.toUpperCase()}`}
+                    currentXP={profile?.xpInLevel ?? 0}
+                    xpForNextLevel={profile?.xpForNextLevel ?? 100}
+                    level={profile?.level ?? 1}
+                    title={`Liga ${profile?.league?.toUpperCase() ?? 'BRONZE'}`}
                   />
                   <motion.div 
                     className="flex items-center gap-2 text-sm text-muted-foreground"
@@ -591,7 +620,7 @@ const StudentDashboard = () => {
                     transition={{ type: "spring", stiffness: 400 }}
                   >
                     <Flame className="h-4 w-4 text-warning fill-warning" />
-                    Streak terbaik <span className="font-bold text-warning">{profile?.bestStreak ?? currentStudent.streak}+</span> hari
+                    Streak terbaik <span className="font-bold text-warning">{profile?.bestStreak ?? progressStats?.bestStreak ?? 0}+</span> hari
                   </motion.div>
                   <motion.div 
                     className="flex items-center gap-2 text-sm text-muted-foreground"
@@ -599,7 +628,7 @@ const StudentDashboard = () => {
                     transition={{ type: "spring", stiffness: 400 }}
                   >
                     <Trophy className="h-4 w-4 text-accent" />
-                    Total XP <span className="font-bold text-accent">{profile?.xp ?? currentStudent.xp}</span>
+                    Total XP <span className="font-bold text-accent">{profile?.xp ?? 0}</span>
                   </motion.div>
                   <Button
                     variant="outline"
@@ -617,25 +646,25 @@ const StudentDashboard = () => {
             <ParentSummaryModal
               open={showParentSummary}
               onOpenChange={setShowParentSummary}
-              studentId={user?.id || currentStudent.id}
-              studentName={user?.name || currentStudent.name}
+              studentId={user?.id || studentProfile?._id || ''}
+              studentName={user?.name || studentProfile?.name || ''}
             />
 
             {/* League Progress */}
             <motion.div variants={fadeInRight}>
               <LeagueProgress
                 user={{
-                  userId: currentStudent.id,
-                  name: currentStudent.name,
-                  avatar: currentStudent.avatar,
+                  userId: user?.id || studentProfile?._id || '',
+                  name: user?.name || studentProfile?.name || '',
+                  avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.id || 'default'}`,
                   currentLeague: leagueState.currentLeague,
                   weeklyXP: leagueState.weeklyXP,
-                  totalXP: currentStudent.xp,
+                  totalXP: profile?.xp ?? 0,
                   rank: leagueState.rank,
                   previousRank: leagueState.previousRank,
                   trend: leagueState.trend,
                 } as LeagueUser}
-                totalXP={currentStudent.xp}
+                totalXP={profile?.xp ?? 0}
                 showWeeklyTimer={true}
               />
             </motion.div>

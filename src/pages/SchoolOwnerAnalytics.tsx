@@ -200,6 +200,11 @@ const SchoolOwnerAnalytics = () => {
       const token = localStorage.getItem("token");
       const schoolId = localStorage.getItem("schoolId");
 
+      if (!schoolId) {
+        console.error("SchoolId tidak ditemukan");
+        return;
+      }
+
       const response = await fetch(
         `http://localhost:5000/api/school-dashboard/classes?schoolId=${schoolId}`,
         {
@@ -224,8 +229,13 @@ const SchoolOwnerAnalytics = () => {
       const token = localStorage.getItem("token");
       const schoolId = localStorage.getItem("schoolId");
 
+      if (!schoolId) {
+        console.error("SchoolId tidak ditemukan");
+        return;
+      }
+
       const response = await fetch(
-        `http://localhost:5000/api/school-owner/setup/${schoolId}`,
+        `http://localhost:5000/api/school-owner/school/${schoolId}`,
         {
           headers: {
             Authorization: `Bearer ${token}`,

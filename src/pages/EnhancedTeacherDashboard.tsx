@@ -32,12 +32,22 @@ import {
 } from "@/components/ui/select";
 
 interface MyClass {
+  _id: string;
   classId: string;
   className: string;
   grade: string;
-  studentCount: number;
-  capacity: number;
+  section: string;
+  role: string;
   subjects: string[];
+  students: {
+    total: number;
+    max: number;
+    percentage: number;
+  };
+  performance: {
+    averageXP: number;
+    averageLevel: number;
+  };
 }
 
 interface MyStudent {
@@ -51,10 +61,19 @@ interface MyStudent {
 }
 
 interface Analytics {
-  totalLessons: number;
-  totalQuizzes: number;
-  totalStudents: number;
-  averageClassScore: number;
+  totals: {
+    lessonsPlanned: number;
+    lessonsCompleted: number;
+    quizzesCreated: number;
+    assignmentsCreated: number;
+    videosUploaded: number;
+    totalContent: number;
+  };
+  averages: {
+    studentEngagement: number;
+    completionRate: number;
+  };
+  totalStudents?: number;
 }
 
 interface ActivityLog {
@@ -98,8 +117,8 @@ const EnhancedTeacherDashboard = () => {
       // Load teacher dashboard data
       const [classesRes, analyticsRes, logsRes] = await Promise.all([
         fetch("http://localhost:5000/api/teacher-dashboard/my-classes", { headers }),
-        fetch("http://localhost:5000/api/teacher-dashboard/analytics", { headers }),
-        fetch("http://localhost:5000/api/teacher-dashboard/activity-logs", { headers }),
+        fetch("http://localhost:5000/api/teacher-dashboard/my-analytics", { headers }),
+        fetch("http://localhost:5000/api/teacher-dashboard/activity-timeline", { headers }),
       ]);
 
       const classesData = await classesRes.json();
@@ -108,7 +127,7 @@ const EnhancedTeacherDashboard = () => {
 
       if (classesData.success) setMyClasses(classesData.data);
       if (analyticsData.success) setAnalytics(analyticsData.data);
-      if (logsData.success) setActivityLogs(logsData.data);
+      if (logsData.success) setActivityLogs(logsData.data || []);
 
       // Load all students initially
       await loadAllStudents();
@@ -140,7 +159,7 @@ const EnhancedTeacherDashboard = () => {
     try {
       const token = localStorage.getItem("token");
       const response = await fetch(
-        `http://localhost:5000/api/teacher-dashboard/class-students/${classId}`,
+        `http://localhost:5000/api/teacher-dashboard/class/${classId}/students`,
         {
           headers: {
             "Content-Type": "application/json",
@@ -198,43 +217,47 @@ const EnhancedTeacherDashboard = () => {
                 <Users className="h-4 w-4 text-indigo-600" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{analytics.totalStudents}</div>
-                <p className="text-xs text-gray-600">Di semua kelas</p>
+                <div className="text-2xl font-bold">{myStudents.length}</div>
+                <p className="text-xs text-gray-600">Di semua kelas Anda</p>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">Total Lessons</CardTitle>
+                <CardTitle className="text-sm font-medium">Total Konten</CardTitle>
                 <BookOpen className="h-4 w-4 text-purple-600" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{analytics.totalLessons}</div>
-                <p className="text-xs text-gray-600">Materi yang dibuat</p>
+                <div className="text-2xl font-bold">{analytics.totals.totalContent}</div>
+                <p className="text-xs text-gray-600">
+                  {analytics.totals.lessonsCompleted} lessons, {analytics.totals.quizzesCreated} kuis
+                </p>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">Total Kuis</CardTitle>
-                <FileText className="h-4 w-4 text-teal-600" />
+                <CardTitle className="text-sm font-medium">Tingkat Penyelesaian</CardTitle>
+                <CheckCircle2 className="h-4 w-4 text-teal-600" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{analytics.totalQuizzes}</div>
-                <p className="text-xs text-gray-600">Kuis yang dibuat</p>
+                <div className="text-2xl font-bold">
+                  {analytics.averages.completionRate.toFixed(1)}%
+                </div>
+                <p className="text-xs text-gray-600">Lessons diselesaikan</p>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">Rata-rata Nilai</CardTitle>
+                <CardTitle className="text-sm font-medium">Engagement Siswa</CardTitle>
                 <TrendingUp className="h-4 w-4 text-green-600" />
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">
-                  {analytics.averageClassScore.toFixed(1)}%
+                  {analytics.averages.studentEngagement.toFixed(1)}%
                 </div>
-                <p className="text-xs text-gray-600">Performa kelas</p>
+                <p className="text-xs text-gray-600">Rata-rata engagement</p>
               </CardContent>
             </Card>
           </div>
@@ -263,14 +286,14 @@ const EnhancedTeacherDashboard = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {myClasses.map((cls) => (
+                  {(myClasses || []).map((cls) => (
                     <TableRow key={cls.classId}>
                       <TableCell className="font-medium">{cls.className}</TableCell>
-                      <TableCell>{cls.grade}</TableCell>
+                      <TableCell>{cls.grade} {cls.section}</TableCell>
                       <TableCell>
                         <div className="flex flex-wrap gap-1">
-                          {cls.subjects.slice(0, 2).map((subject) => (
-                            <Badge key={subject} variant="outline" className="text-xs">
+                          {(cls.subjects || []).slice(0, 2).map((subject, idx) => (
+                            <Badge key={idx} variant="outline" className="text-xs">
                               {subject}
                             </Badge>
                           ))}
@@ -279,11 +302,17 @@ const EnhancedTeacherDashboard = () => {
                               +{cls.subjects.length - 2}
                             </Badge>
                           )}
+                          {cls.subjects.length === 0 && (
+                            <Badge variant="outline" className="text-xs">
+                              {cls.role}
+                            </Badge>
+                          )}
                         </div>
                       </TableCell>
-                      <TableCell className="text-center">{cls.studentCount}</TableCell>
+                      <TableCell className="text-center">{cls.students.total}</TableCell>
                       <TableCell className="text-center">
-                        {cls.studentCount}/{cls.capacity}
+                        {cls.students.total}/{cls.students.max}
+                        <span className="text-xs text-muted-foreground ml-1">({cls.students.percentage}%)</span>
                       </TableCell>
                       <TableCell>
                         <Button

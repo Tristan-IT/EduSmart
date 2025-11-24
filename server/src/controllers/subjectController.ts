@@ -1,8 +1,9 @@
 import { Request, Response } from "express";
 import SubjectModel from "../models/Subject";
-import SchoolModel from "../models/School";
+import SchoolModel, { type ISchool } from "../models/School";
+import UserModel from "../models/User";
 import mongoose from "mongoose";
-import { getSubjectPreview } from "../services/subjectService";
+import { createSubjectsFromTemplates, getSubjectPreview } from "../services/subjectService";
 
 interface AuthenticatedRequest extends Request {
   user?: {
@@ -146,22 +147,51 @@ export const getSubjects = async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { category, schoolType, grade, search, isActive } = req.query;
 
-    // Get school from authenticated user
+    // Get user and their school
     const userId = req.user?.id;
-    const school = await SchoolModel.findOne({
-      owner: userId,
-    });
-
-    if (!school) {
-      return res.status(404).json({
+    const user = await UserModel.findById(userId);
+    
+    if (!user) {
+      return res.status(401).json({
         success: false,
-        message: "School not found for this owner",
+        message: "User not authenticated",
       });
+    }
+
+    // Get school based on user role
+    let schoolId;
+    let schoolDoc: ISchool | null = null;
+    if (user.role === "school_owner") {
+      const school = await SchoolModel.findOne({ owner: userId });
+      if (!school) {
+        return res.status(404).json({
+          success: false,
+          message: "School not found for this owner",
+        });
+      }
+      schoolId = school._id;
+      schoolDoc = school;
+    } else {
+      // Teacher or student - get from user.school
+      schoolId = user.school;
+      if (!schoolId) {
+        return res.status(404).json({
+          success: false,
+          message: "User is not associated with any school",
+        });
+      }
+      schoolDoc = await SchoolModel.findById(schoolId);
+      if (!schoolDoc) {
+        return res.status(404).json({
+          success: false,
+          message: "School not found",
+        });
+      }
     }
 
     // Build query
     const query: any = {
-      school: school._id,
+      school: schoolId,
     };
 
     if (category) {
@@ -190,7 +220,14 @@ export const getSubjects = async (req: AuthenticatedRequest, res: Response) => {
       query.isActive = true;
     }
 
-    const subjects = await SubjectModel.find(query).sort({ category: 1, name: 1 });
+    let subjects = await SubjectModel.find(query).sort({ category: 1, name: 1 });
+
+    if (!subjects.length && schoolDoc?.schoolTypes?.length) {
+      console.log(`[getSubjects] No subjects found, creating from templates for school types: ${schoolDoc.schoolTypes.join(', ')}`);
+      await createSubjectsFromTemplates(schoolDoc._id as mongoose.Types.ObjectId, schoolDoc.schoolTypes as any);
+      subjects = await SubjectModel.find(query).sort({ category: 1, name: 1 });
+      console.log(`[getSubjects] Created ${subjects.length} subjects from templates`);
+    }
 
     return res.status(200).json({
       success: true,
