@@ -75,15 +75,3 @@ npm run dev
 - Email: `0088432625@student.smktiglobal.sch.id`
 - Password: `i123`
 
-## 🛠️ Troubleshooting
-
-- Pastikan semua dependencies terinstall
-- Periksa koneksi MongoDB di file `.env`
-- Jika port konflik, ubah port di `vite.config.ts` atau `server/.env`
-- Untuk masalah lainnya, lihat dokumentasi di folder `docs/`
-
-## 📚 Dokumentasi Tambahan
-
-- [Panduan Testing API](API-TESTING-GUIDE.md)
-- [Arsitektur Sistem](ARCHITECTURE-DIAGRAM.md)
-- [Integrasi AI](AI-INTEGRATION-TESTING.md)
